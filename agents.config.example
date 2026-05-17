@@ -1,0 +1,150 @@
+# ============================================================
+# agents.config — конфигурация PRIMARY и SIDE-моделей проекта
+# ============================================================
+# Скопируй этот файл в корень своего проекта как `agents.config` и заполни.
+#
+# Этот файл КОММИТИТСЯ — в нём нет секретов. API-ключи лежат в .env
+# и подключаются через `api_key_env` (имя переменной окружения).
+#
+# Терминология PRIMARY / SIDE-A / SIDE-B — см. principles/01-philosophy.md
+# Триангуляция — principles/05-triangulated-review.md
+# Бюджет — principles/04-orchestration-budgets.md
+# ============================================================
+
+# ------------------------------------------------------------
+# [primary] — твой главный агент в IDE/CLI
+# ------------------------------------------------------------
+# Этот агент:
+#  - живёт в твоём IDE (Claude Code / Cursor / Codex / Cline / Aider / ...)
+#  - знает инварианты проекта (через CLAUDE.md / .cursor/rules / system prompt)
+#  - имеет persistent memory (см. principles/06-memory-hygiene.md)
+#  - выполняет основную работу — план, код, ревью с контекстом
+
+[primary]
+platform     = "claude-code"        # claude-code | cursor | codex | cline | aider | other
+vendor       = "anthropic"          # ВАЖНО: задаётся явно для проверки независимости от SIDE-моделей.
+                                    # openai | google | anthropic | xai | mistral | ...
+                                    # Даже если модель управляется IDE, vendor нужен для правила
+                                    # PRIMARY.vendor ≠ SIDE-A.vendor ≠ SIDE-B.vendor.
+model        = "claude-opus-4-7"    # подсказка, для отчётов; фактически модель управляется платформой
+memory_dir   = ".claude/agent-memory"   # путь к persistent memory; для Cursor — ".cursor/agent-memory" и т.п.
+
+# ------------------------------------------------------------
+# Различение vendor и gateway
+# ------------------------------------------------------------
+# vendor   — компания, обучившая модель (OpenAI, Google, Anthropic, xAI, Mistral, ...)
+# gateway  — через какой API ты её дёргаешь (OpenRouter, прямой API провайдера, ...)
+#
+# Правило независимости (см. principles/05-triangulated-review.md) применяется
+# к VENDOR, не к gateway: PRIMARY.vendor ≠ SIDE-A.vendor ≠ SIDE-B.vendor.
+# OpenRouter как gateway для обеих SIDE — допустимо; OpenAI как vendor для обеих
+# SIDE — НЕ допустимо.
+
+# ------------------------------------------------------------
+# [side_a] — первый внешний ревьюер
+# ------------------------------------------------------------
+# Дефолты подобраны как STRONG-tier (gpt-5.5 / gemini-3.1-pro-preview / claude-sonnet-4-6).
+# Это уровень для серьёзного ревью кода — он реально углубляется в diff и ловит
+# концептуальные блокеры. Mid-tier (mini / flash-lite) на ревью НЕ берут — они для
+# классификации/роутинга, на ревью часто отвечают пустым approve.
+#
+# Подробности и обоснование — principles/04-orchestration-budgets.md,
+# раздел «Выбор модели для ревью» (4 класса моделей).
+
+[side_a]
+vendor       = "openai"              # openai | google | anthropic | xai | mistral | ...
+gateway      = "openrouter"          # openrouter | openai | google | anthropic | direct
+model        = "openai/gpt-5.5"      # STRONG-tier. На прод-биллинг/прод-RBAC поднимать до "openai/gpt-5.5-pro" (top).
+                                     # На бюджетный режим / Tier-1 опустить до "openai/gpt-5.4-mini" (mid).
+api_key_env  = "OPENROUTER_API_KEY"
+base_url     = "https://openrouter.ai/api/v1"
+max_tokens   = 6000
+timeout_s    = 90
+
+# ------------------------------------------------------------
+# [side_b] — второй внешний ревьюер
+# ------------------------------------------------------------
+# vendor должен отличаться И от primary, И от side_a (см. правило выше).
+
+[side_b]
+vendor       = "google"
+gateway      = "openrouter"
+model        = "google/gemini-3.1-pro-preview"   # STRONG-tier. На top — "google/gemini-3.1-pro-thinking".
+                                                 # На бюджет — "google/gemini-3.1-flash-lite-preview".
+api_key_env  = "OPENROUTER_API_KEY"
+base_url     = "https://openrouter.ai/api/v1"
+max_tokens   = 6000
+timeout_s    = 90
+
+# ------------------------------------------------------------
+# Альтернативные составы тройки — раскомментируй для смены конфигурации
+# ------------------------------------------------------------
+# Дефолтная тройка (PRIMARY = Claude в Claude Code):
+#   PRIMARY = anthropic (claude-opus-4-7 платформой)
+#   SIDE-A  = openai    (gpt-5.5)
+#   SIDE-B  = google    (gemini-3.1-pro-preview)
+#
+# Если PRIMARY = GPT (Codex/Copilot Workspace):
+#   SIDE-A = anthropic  (claude-sonnet-4-6)
+#   SIDE-B = google     (gemini-3.1-pro-preview)
+#
+# Если PRIMARY = Gemini (Cursor/Cline с Gemini):
+#   SIDE-A = anthropic  (claude-sonnet-4-6)
+#   SIDE-B = openai     (gpt-5.5)
+#
+# Бюджетный режим (только для частых Tier-2 на стабильной кодовой базе):
+#   SIDE-A model = "openai/gpt-5.4-mini"
+#   SIDE-B model = "google/gemini-3.1-flash-lite-preview"
+#   ⚠ Цена $0.03/прогон, но качество поверхностное — НЕ использовать на T3/security/billing.
+
+# ------------------------------------------------------------
+# [budget] — лимиты на платные API-вызовы SIDE-моделей
+# ------------------------------------------------------------
+# Подробности и логика проверки — principles/04-orchestration-budgets.md
+# Все значения в USD. Реальная стоимость зависит от выбранных моделей.
+
+[budget]
+per_review_usd = 0.50      # одна триангуляция diff'а (PRIMARY + SIDE-A + SIDE-B)
+per_tier3_usd  = 2.00      # полный Tier-3 цикл (план + триангуляция + 1-2 итерации)
+monthly_usd    = 50.00     # общий месячный потолок на SIDE-вызовы (hard limit)
+
+# Раздельные политики overflow — разные пороги имеют разную семантику.
+# per_review / per_tier3 — soft (можно спросить и продолжить).
+# monthly — hard (только block или ask_user; "warn" недопустим, см. principles/04).
+on_review_overflow  = "ask_user"   # ask_user | block | warn  — для per_review_usd и per_tier3_usd
+on_monthly_overflow = "ask_user"   # ask_user | block         — для monthly_usd (warn запрещён)
+                                   # ask_user — спросить пользователя при превышении
+                                   # block    — заблокировать вызов, эскалировать
+                                   # warn     — продолжить, но залогировать предупреждение
+                                   #            (только для on_review_overflow!)
+
+# Файл, где агент хранит накопленный ledger расходов за текущий месяц.
+# Это локальный state, не общий ресурс — обязательно добавь в .gitignore.
+# Путь — на твой выбор; типовые варианты:
+#   .agent-state/budget-ledger.json   ← локально в проекте
+#   ~/.config/agents/budget-ledger.json   ← глобально в home
+ledger_file = ".agent-state/budget-ledger.json"
+
+# ------------------------------------------------------------
+# [triangulation] — настройки правила 2-из-3
+# ------------------------------------------------------------
+
+[triangulation]
+# Минимум согласных ревьюеров, чтобы пометить замечание как блокер.
+consensus_threshold = 2
+
+# Запускать ли SIDE-B автоматически на Tier 2 (security/RBAC/миграции).
+# По дефолту — нет: на Tier 2 хватает PRIMARY + SIDE-A.
+side_b_on_tier2 = false
+
+# Размер diff'а в строках, выше которого требуется явное подтверждение
+# (большие diff'ы → большая стоимость).
+diff_size_warn_lines = 1500
+
+# ------------------------------------------------------------
+# [escalation] — кому эскалируем при блокерах
+# ------------------------------------------------------------
+
+[escalation]
+owner_handle = "@your-handle"      # GitHub username / Slack handle владельца проекта
+notify_on    = ["budget_overflow", "consensus_blocker", "side_provider_down"]
