@@ -45,15 +45,15 @@
 
 | Агент | permissionMode | maxTurns | effort | memory |
 |---|---|---|---|---|
-| pm-orchestrator | default | 30 | high | ⚠ только с хуком |
-| code-reviewer | default | 20 | high | ⚠ только с хуком |
+| pm-orchestrator | default | 30 | high | project + хук |
+| code-reviewer | default | 20 | high | project + хук |
 | dev-backend | acceptEdits | 30 | medium | project |
 | dev-frontend | acceptEdits | 30 | medium | project |
 | dev-database | acceptEdits | 25 | high | project |
 | qa-tester | acceptEdits | 30 | medium | project |
-| browser-tester | acceptEdits | 40 | medium | ⚠ только с хуком |
-| devops | default | 25 | high | ⚠ только с хуком |
-| local-sysops | default | 15 | low | ⚠ только с хуком |
+| browser-tester | acceptEdits | 40 | medium | project + хук |
+| devops | default | 25 | high | project + хук |
+| local-sysops | default | 15 | low | project + хук |
 | docs-writer | acceptEdits | 20 | low | project |
 | i18n-keeper | acceptEdits | 25 | low | project |
 | external-llm-reviewer | — | — | — | — |
@@ -99,7 +99,9 @@
 | devops | Write | Write |
 | local-sysops | Write | Write |
 
-**Решение:** `PreToolUse`-хук, разрешающий этим агентам Write/Edit только внутри их папки памяти и блокирующий всё остальное. Пока хука нет, строка `memory:` в шаблонах этих агентов оставлена закомментированной с пометкой. Реализация хука — `../principles/09-mechanical-invariants.md`.
+**Решение:** `PreToolUse`-хук, возвращающий ролям ограничения, которые снимает поле `memory`. Реализован и лежит в [`../hooks/guard.py`](../hooks/guard.py), правило `memory`. Его матрица — исполняемая копия таблицы выше: константа `MEMORY_MATRIX` в начале файла.
+
+Отсюда важное условие эксплуатации: у этих пяти ролей `memory: project` и установленный хук — **одно целое**. Включить память, не поставив хук, значит тихо снять ограничения ролей. В шаблонах это отмечено и во frontmatter, и в теле, чтобы условие не потерялось при копировании отдельного файла.
 
 **Не обходится через `disallowedTools`:** денилист уберёт Write/Edit целиком, и агент не сможет вести память вообще — то есть отключит ровно ту функцию, ради которой поле ставили. Нужно ограничение по путям, а не по инструментам.
 

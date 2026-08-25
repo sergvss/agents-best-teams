@@ -11,10 +11,10 @@ model: <любой reasoning-LLM, рекомендуется наиболее м
 permissionMode: default       # поле почти не играет: у роли нет Edit/Write вовсе, principles/03
 maxTurns: 30                  # с запасом на 8 делегаций Tier-3 + чекпоинт, principles/04
 effort: high                  # ошибка маршрутизации дороже прогона, principles/04
-# memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
-#                             # агенту Read/Write/Edit для ведения файлов памяти, а этому
-#                             # агенту Edit/Write запрещены матрицей (checklists/
-#                             # permission-checklist.md). Хук ограничения путей — principles/09.
+memory: project               # → .claude/agent-memory/pm-orchestrator/, principles/06.
+                              # ТРЕБУЕТ правила memory из hooks/guard.py: поле выдаёт Read/Write/Edit
+                              # в обход tools, а этой роли Edit и Write не положены. Хук возвращает
+                              # ограничение, разрешая запись только в папку памяти.
 color: purple
 ---
 
@@ -152,11 +152,11 @@ color: purple
 
 Директория: `.claude/agent-memory/pm-orchestrator/`
 
-> ⚠ Поле `memory` во frontmatter этой роли намеренно закомментировано: оно выдаёт
-> Read/Write/Edit в обход списка `tools`, а оркестратор не пишет код по определению.
-> Пока нет хука ограничения путей (`../principles/09-mechanical-invariants.md`),
-> память у роли выключена, а раздел ниже описывает, что в неё писать, когда её
-> включат. Разбор — `../checklists/permission-checklist.md`.
+> Память включена и работает **только в паре** с правилом `memory` из
+> [`../hooks/guard.py`](../hooks/guard.py). Поле `memory` выдаёт Read/Write/Edit в обход
+> списка `tools`; хук возвращает ограничение, разрешая запись лишь в папку ниже.
+> Без установленного хука оркестратор получает возможность править код — а он не
+> пишет код по определению роли.
 
 Что хранить:
 - Паттерны удачных декомпозиций

@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Тесты защитных хуков. Прогоняют guard.py как настоящий процесс — через stdin
+и stdout, ровно так же, как его вызывает Claude Code.
+
+Запуск:
+    python -X utf8 hooks/tests/test_guard.py
+
+Половина тестов проверяет, что хук НЕ срабатывает. Это не формальность:
+хук с ложными срабатываниями пользователь отключает в первый же день, и защиты
+не остаётся вовсе. Обоснование — principles/10-eval-suite.md.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import unittest
+
+GUARD = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "guard.py")
+
+
+def run_hook(payload, rules=None):
+    """Вызывает guard.py и возвращает решение: None = разрешено, строка = причина отказа."""
+    cmd = [sys.executable, "-X", "utf8", GUARD]
+    if rules:
+        cmd += ["--rules", rules]
+    proc = subprocess.run(
+        cmd,
+        input=json.dumps(payload).encode("utf-8"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    out = proc.stdout.decode("utf-8").strip()
+    if not out:
+        return None
+    return json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def bash(command, agent=None):
+    payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+    if agent:
+        payload["agent_type"] = agent
+    return payload
+
+
+def edit(file_path, tool="Edit", agent=None):
+    payload = {"tool_name": tool, "tool_input": {"file_path": file_path}}
+    if agent:
+        payload["agent_type"] = agent
+    return payload
+
+
+class GuardTestCase(unittest.TestCase):
+    def assertBlocked(self, payload, marker=None):
+        reason = run_hook(payload)
+        self.assertIsNotNone(reason, "ожидалась блокировка, команда прошла: {}".format(payload))
+        if marker:
+            self.assertIn(marker, reason)
+
+    def assertAllowed(self, payload):
+        reason = run_hook(payload)
+        self.assertIsNone(reason, "ожидалось разрешение, но заблокировано:\n{}".format(reason))
+
+
+class TestFilesystem(GuardTestCase):
+    def test_blocks_dangerous_targets(self):
+        for command in [
+            "rm -rf /",
+            "rm -rf .",
+            "rm -rf ..",
+            "rm -rf ~",
+            "rm -rf *",
+            "rm -rf ./",
+            "rm -fr /",
+            "rm -Rf /*",
+            "sudo rm -rf /",
+            "rm --recursive --force /",
+            "cd /tmp && rm -rf .",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
+    def test_blocks_variable_in_target(self):
+        for command in ['rm -rf "$BUILD_DIR/"', "rm -rf $HOME", "rm -rf %TEMP%"]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "переменную")
+
+    def test_allows_specific_paths(self):
+        for command in [
+            "rm -rf ./build",
+            "rm -rf node_modules",
+            "rm -rf /tmp/agents-test-dir",
+            "rm -f single-file.txt",
+            "rm -r some-dir",
+            "ls -la",
+            'echo "rm -rf /"',
+            "grep -rn 'rm -rf' docs/",
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command))
+
+
+class TestGit(GuardTestCase):
+    def test_blocks_destructive(self):
+        for command, marker in [
+            ("git push --force origin main", "force"),
+            ("git push -f", "force"),
+            ("git -C /repo push --force", "force"),
+            ("git reset --hard HEAD~1", "reset --hard"),
+            ("git clean -fdx", "git clean"),
+            ("git clean -fd", "git clean"),
+            ("git checkout -- .", "checkout"),
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), marker)
+
+    def test_allows_safe(self):
+        for command in [
+            "git push --force-with-lease origin main",
+            "git push origin main",
+            "git push -u origin feature",
+            "git push --follow-tags",
+            "git reset --soft HEAD~1",
+            "git reset HEAD file.txt",
+            "git clean -n",
+            "git clean -ndx",
+            "git clean -i",
+            "git checkout -- src/file.js",
+            "git checkout main",
+            "git status",
+            "git diff --stat",
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command))
+
+
+class TestSql(GuardTestCase):
+    def test_blocks_unsafe(self):
+        for command in [
+            'psql -c "DELETE FROM users"',
+            'mysql -e "UPDATE users SET active = 0"',
+            'psql -c "TRUNCATE TABLE logs"',
+            'sqlite3 app.db "DROP TABLE users"',
+            'psql -c "DROP DATABASE prod"',
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
+    def test_allows_safe(self):
+        for command in [
+            'psql -c "DELETE FROM users WHERE id = 1"',
+            'mysql -e "UPDATE users SET active = 0 WHERE id = 5"',
+            'psql -c "SELECT * FROM users"',
+            'sqlite3 app.db "SELECT count(*) FROM users"',
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command))
+
+    def test_does_not_fire_outside_db_clients(self):
+        # Ключевая проверка на ложное срабатывание: слово DELETE в тексте
+        # не должно блокировать поиск по коду или правку документации.
+        for command in [
+            'grep -rn "DELETE FROM users" src/',
+            'echo "UPDATE users SET x=1"',
+            "rg 'TRUNCATE TABLE' migrations/",
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command))
+
+
+class TestEnv(GuardTestCase):
+    def test_blocks_writes(self):
+        for path, tool in [
+            (".env", "Edit"),
+            ("/home/user/proj/.env", "Write"),
+            (".env.production", "Edit"),
+            ("C:\\projects\\app\\.env.local", "Edit"),
+        ]:
+            with self.subTest(path=path):
+                self.assertBlocked(edit(path, tool), "P/Privileged")
+
+    def test_allows_examples_and_normal_files(self):
+        for path in [".env.example", ".env.sample", "src/config.py", "docs/env.md", "environment.yml"]:
+            with self.subTest(path=path):
+                self.assertAllowed(edit(path))
+
+    def test_read_is_not_touched(self):
+        # Хук висит на Edit и Write; чтение .env остаётся разрешённым.
+        self.assertAllowed(edit(".env", tool="Read"))
+
+
+class TestAgentMemory(GuardTestCase):
+    def test_blocks_roles_without_write_rights(self):
+        for path, tool, agent in [
+            ("src/app.py", "Edit", "code-reviewer"),
+            ("notes.md", "Write", "code-reviewer"),
+            ("src/app.py", "Edit", "pm-orchestrator"),
+            ("newfile.txt", "Write", "devops"),
+            ("newfile.txt", "Write", "local-sysops"),
+            ("src/app.js", "Edit", "browser-tester"),
+            ("src/app.js", "Write", "browser-tester"),
+        ]:
+            with self.subTest(agent=agent, tool=tool, path=path):
+                self.assertBlocked(edit(path, tool, agent), agent)
+
+    def test_allows_own_memory_directory(self):
+        for agent in ["code-reviewer", "pm-orchestrator", "devops", "local-sysops", "browser-tester"]:
+            path = ".claude/agent-memory/{}/MEMORY.md".format(agent)
+            with self.subTest(agent=agent):
+                self.assertAllowed(edit(path, "Write", agent))
+                self.assertAllowed(edit(path, "Edit", agent))
+
+    def test_does_not_allow_foreign_memory_directory(self):
+        # Роль не должна писать в память чужой роли.
+        self.assertBlocked(
+            edit(".claude/agent-memory/dev-backend/MEMORY.md", "Edit", "code-reviewer"),
+            "code-reviewer",
+        )
+
+    def test_allows_role_specific_zones(self):
+        # devops и local-sysops правят существующие файлы — Edit им положен.
+        self.assertAllowed(edit("CHANGELOG.md", "Edit", "devops"))
+        self.assertAllowed(edit("docker-compose.yml", "Edit", "local-sysops"))
+        # browser-tester пишет тест-артефакты.
+        self.assertAllowed(edit("tests/e2e/login.spec.js", "Write", "browser-tester"))
+
+    def test_ignores_agents_outside_matrix(self):
+        self.assertAllowed(edit("src/app.py", "Edit", "dev-backend"))
+        self.assertAllowed(edit("src/app.py", "Edit", "qa-tester"))
+
+    def test_ignores_main_thread(self):
+        # Вне субагента поле agent_type отсутствует — правила ролей не применяются.
+        self.assertAllowed(edit("src/app.py", "Edit"))
+
+
+class TestContract(GuardTestCase):
+    def test_empty_and_malformed_input_do_not_crash(self):
+        for raw in [b"", b"   ", b"not json"]:
+            with self.subTest(raw=raw):
+                proc = subprocess.run(
+                    [sys.executable, "-X", "utf8", GUARD],
+                    input=raw, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+                self.assertEqual(proc.returncode, 0)
+                self.assertEqual(proc.stdout.decode("utf-8").strip(), "")
+
+    def test_rules_can_be_disabled_selectively(self):
+        # С выключенным правилом git та же команда должна проходить.
+        self.assertIsNotNone(run_hook(bash("git push --force"), rules="fs,git,sql"))
+        self.assertIsNone(run_hook(bash("git push --force"), rules="fs,sql"))
+
+    def test_deny_payload_shape(self):
+        proc = subprocess.run(
+            [sys.executable, "-X", "utf8", GUARD],
+            input=json.dumps(bash("rm -rf /")).encode("utf-8"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        self.assertEqual(proc.returncode, 0, "хук обязан выходить с кодом 0")
+        out = json.loads(proc.stdout.decode("utf-8"))
+        block = out["hookSpecificOutput"]
+        self.assertEqual(block["hookEventName"], "PreToolUse")
+        self.assertEqual(block["permissionDecision"], "deny")
+        self.assertTrue(block["permissionDecisionReason"].startswith("BLOCKED ["))
+
+
+class TestMatrixMatchesDocs(unittest.TestCase):
+    """
+    MEMORY_MATRIX в guard.py и таблица в permission-checklist описывают одно и то же.
+    Разойтись они могут молча — этот тест не даёт.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(GUARD)))
+        import guard  # noqa: E402
+        self.matrix = guard.MEMORY_MATRIX
+        checklist = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir,
+            "checklists", "permission-checklist.md",
+        )
+        with open(checklist, encoding="utf-8") as fh:
+            self.doc = fh.read()
+
+    def test_agents_needing_hook_match(self):
+        documented = set()
+        for line in self.doc.splitlines():
+            if line.strip().startswith("|") and "project + хук" in line:
+                documented.add(line.strip().strip("|").split("|")[0].strip())
+        self.assertEqual(
+            documented,
+            set(self.matrix),
+            "роли, помеченные в permission-checklist как требующие хука, "
+            "разошлись с MEMORY_MATRIX в guard.py",
+        )
+
+    def test_modes_table_matches_templates(self):
+        """Таблица режимов в чек-листе не должна расходиться с frontmatter шаблонов."""
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir)
+        templates_dir = os.path.join(root, "templates")
+
+        declared = {}
+        for line in self.doc.splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) == 5 and os.path.exists(os.path.join(templates_dir, cells[0] + ".md")):
+                declared[cells[0]] = cells[1:]
+
+        self.assertTrue(declared, "не удалось разобрать таблицу режимов")
+
+        for agent, (mode, turns, effort, memory) in declared.items():
+            with open(os.path.join(templates_dir, agent + ".md"), encoding="utf-8") as fh:
+                head = fh.read().split("\n---", 2)[0]
+            # Разбираем скалярные поля построчно: так тест остаётся без зависимостей.
+            fields = dict(
+                re.findall(r"^(permissionMode|maxTurns|effort|memory):\s*(\S+)", head, re.M)
+            )
+            expected_memory = "project + хук" if agent in self.matrix else fields.get("memory", "—")
+            with self.subTest(agent=agent):
+                self.assertEqual(fields.get("permissionMode", "—"), mode)
+                self.assertEqual(fields.get("maxTurns", "—"), turns)
+                self.assertEqual(fields.get("effort", "—"), effort)
+                self.assertEqual(expected_memory, memory)
+
+    def test_every_matrix_agent_has_a_template(self):
+        templates = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, "templates",
+        )
+        for agent in self.matrix:
+            path = os.path.join(templates, agent + ".md")
+            with self.subTest(agent=agent):
+                self.assertTrue(os.path.exists(path), "нет шаблона для роли " + agent)
+                with open(path, encoding="utf-8") as fh:
+                    head = fh.read().split("\n---", 2)[0]
+                # Роль под правилом хука обязана иметь включённую память,
+                # иначе правило охраняет то, чего нет.
+                self.assertIn("memory: project", head, "у роли " + agent + " не включена память")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
