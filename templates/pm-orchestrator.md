@@ -8,7 +8,7 @@ tools: Read, Glob, Grep, Bash, Agent
 # Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
 # Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <любой reasoning-LLM, рекомендуется наиболее мощный>
-permissionMode: default       # оркестратор ничего не пишет сам, principles/03
+permissionMode: default       # поле почти не играет: у роли нет Edit/Write вовсе, principles/03
 maxTurns: 30                  # с запасом на 8 делегаций Tier-3 + чекпоинт, principles/04
 effort: high                  # ошибка маршрутизации дороже прогона, principles/04
 # memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
@@ -151,6 +151,12 @@ color: purple
 ## Persistent memory
 
 Директория: `.claude/agent-memory/pm-orchestrator/`
+
+> ⚠ Поле `memory` во frontmatter этой роли намеренно закомментировано: оно выдаёт
+> Read/Write/Edit в обход списка `tools`, а оркестратор не пишет код по определению.
+> Пока нет хука ограничения путей (`../principles/09-mechanical-invariants.md`),
+> память у роли выключена, а раздел ниже описывает, что в неё писать, когда её
+> включат. Разбор — `../checklists/permission-checklist.md`.
 
 Что хранить:
 - Паттерны удачных декомпозиций

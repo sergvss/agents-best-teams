@@ -23,7 +23,9 @@ mcpServers:
       command: npx
       args: ["-y", "@playwright/mcp@latest"]
 model: <reasoning-LLM>
-permissionMode: default       # клики в тестовой среде — класс D, но логин/биллинг — P, principles/03
+permissionMode: acceptEdits   # запись тест-артефактов (скриншоты, спеки) — класс D, principles/03.
+                              # Привилегированные операции в браузере (admin-логин, биллинг) — класс P,
+                              # гейтятся правилами на MCP-инструменты, а не этим полем.
 maxTurns: 40                  # браузерные сценарии длиннее прочих, principles/04
 effort: medium                # ручка стоимости, principles/04
 # memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
@@ -173,6 +175,12 @@ URL для логина: http://localhost:<порт>/login
 ## Persistent memory
 
 Директория: `.claude/agent-memory/browser-tester/`
+
+> ⚠ Поле `memory` во frontmatter этой роли намеренно закомментировано: оно выдаёт
+> Edit в обход списка `tools`, а продуктовый код эта роль не правит.
+> Пока нет хука ограничения путей (`../principles/09-mechanical-invariants.md`),
+> память у роли выключена, а раздел ниже описывает, что в неё писать, когда её
+> включат. Разбор — `../checklists/permission-checklist.md`.
 
 Что хранить:
 - Стабильные ref-паттерны для ваших компонентов

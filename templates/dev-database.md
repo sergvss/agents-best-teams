@@ -7,7 +7,9 @@ tools: Read, Edit, Write, Glob, Grep, Bash, context7
 # Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
 # Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <мощный reasoning-LLM>
-permissionMode: default       # НЕ acceptEdits: правка схемы и миграции — класс W/P, principles/03
+permissionMode: acceptEdits   # правка файлов схемы и создание миграций — класс D, principles/03.
+                              # ПРИМЕНЕНИЕ миграции — класс W, идёт через Bash и этим полем НЕ гейтится:
+                              # его закрывают правила разрешений и хуки, см. principles/09.
 maxTurns: 25                  # бюджет шагов, principles/04
 effort: high                  # цена ошибки в схеме выше цены прогона, principles/04
 memory: project               # → .claude/agent-memory/dev-database/, principles/06

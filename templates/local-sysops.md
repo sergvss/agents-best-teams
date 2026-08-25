@@ -7,7 +7,8 @@ tools: Read, Edit, Bash, Glob, Grep
 # Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
 # Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <быстрый LLM>
-permissionMode: default       # управление процессами и портами — класс W, principles/03
+permissionMode: default       # правит редко и рядом с конфигами — по правилу «не уверен, бери строже»,
+                              # principles/03. Управление процессами идёт через Bash, вне этого поля.
 maxTurns: 15                  # роль узкая, длинные цепочки — признак выхода за зону, principles/04
 effort: low                   # диагностика процессов не требует глубокого reasoning, principles/04
 # memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
@@ -140,6 +141,12 @@ kill <конкретный-PID>
 ## Persistent memory
 
 Директория: `.claude/agent-memory/local-sysops/`
+
+> ⚠ Поле `memory` во frontmatter этой роли намеренно закомментировано: оно выдаёт
+> Write в обход списка `tools`, которого роль лишена намеренно.
+> Пока нет хука ограничения путей (`../principles/09-mechanical-invariants.md`),
+> память у роли выключена, а раздел ниже описывает, что в неё писать, когда её
+> включат. Разбор — `../checklists/permission-checklist.md`.
 
 Что хранить:
 - Команды запуска серверов проекта (точные, с нужными флагами)

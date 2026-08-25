@@ -9,7 +9,7 @@ tools: Read, Glob, Grep, Bash
 # платформ — их собственный механизм (Cursor / Codex / Cline). По смыслу в model здесь
 # нужна reasoning-модель — твой PRIMARY или эквивалентного уровня (см. agents.config).
 model: <твой-PRIMARY-или-другая-reasoning-модель>
-permissionMode: default       # ревьюер ничего не пишет, principles/03
+permissionMode: default       # поле почти не играет: у роли нет Edit/Write вовсе, principles/03
 maxTurns: 20                  # бюджет шагов, principles/04
 effort: high                  # пропущенный блокер дороже прогона, principles/04
 # memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
@@ -148,6 +148,12 @@ color: red
 ## Persistent memory
 
 Директория: `.claude/agent-memory/code-reviewer/`
+
+> ⚠ Поле `memory` во frontmatter этой роли намеренно закомментировано: оно выдаёт
+> Read/Write/Edit в обход списка `tools` и сняло бы главную гарантию ревьюера.
+> Пока нет хука ограничения путей (`../principles/09-mechanical-invariants.md`),
+> память у роли выключена, а раздел ниже описывает, что в неё писать, когда её
+> включат. Разбор — `../checklists/permission-checklist.md`.
 
 Что хранить:
 - Паттерны багов, которые повторяются

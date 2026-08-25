@@ -7,7 +7,8 @@ tools: Read, Edit, Glob, Grep, Bash
 # Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
 # Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <reasoning-LLM>
-permissionMode: default       # релизы, деплой, git-операции — класс W/P, principles/03
+permissionMode: default       # единственная роль, которая правит .env — класс P, principles/03.
+                              # Релизы и деплой идут через Bash и этим полем не гейтятся.
 maxTurns: 25                  # бюджет шагов, principles/04
 effort: high                  # цена ошибки в релизе высокая, principles/04
 # memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
@@ -135,6 +136,12 @@ git checkout -b feature/name  # создать
 ## Persistent memory
 
 Директория: `.claude/agent-memory/devops/`
+
+> ⚠ Поле `memory` во frontmatter этой роли намеренно закомментировано: оно выдаёт
+> Write в обход списка `tools`, а новые файлы эта роль создаёт только по согласованию.
+> Пока нет хука ограничения путей (`../principles/09-mechanical-invariants.md`),
+> память у роли выключена, а раздел ниже описывает, что в неё писать, когда её
+> включат. Разбор — `../checklists/permission-checklist.md`.
 
 Что хранить:
 - Чеклисты релиза для типичных сценариев проекта
