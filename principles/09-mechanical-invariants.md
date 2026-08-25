@@ -78,10 +78,13 @@ Hook — это скрипт, который перехватывает вызо
   rm -rf .      → BLOCKED [P/Privileged]
 
 Git деструктив:
-  git push --force    → BLOCKED [P/Privileged]
-  git reset --hard    → BLOCKED [W/Write]
-  git clean -fdx      → BLOCKED [W/Write]
-  git checkout -- .   → BLOCKED [W/Write]
+  git push --force       → BLOCKED [P/Privileged]
+  git push origin +ветка → BLOCKED [P/Privileged]  (тот же force, другой синтаксис)
+  git push --mirror      → BLOCKED [P/Privileged]
+  git push --delete      → BLOCKED [P/Privileged]  (удаление ветки на сервере)
+  git reset --hard       → BLOCKED [W/Write]
+  git clean -fdx         → BLOCKED [W/Write]
+  git checkout -- .      → BLOCKED [W/Write]
 
 SQL деструктив без WHERE:
   DELETE FROM <table>  (без WHERE)  → BLOCKED [P/Privileged]
@@ -91,6 +94,8 @@ SQL деструктив без WHERE:
 
 Защита конфигурации:
   Edit/Write на .env*  → BLOCKED [P/Privileged]
+  echo ... > .env      → BLOCKED [P/Privileged]  (та же запись, мимо редактора)
+  sed -i / rm / mv на .env* → BLOCKED [P/Privileged]
 
 Возврат ролевых ограничений:
   Write/Edit роли вне её зоны  → BLOCKED [W/Write]

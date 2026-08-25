@@ -41,7 +41,10 @@ DB_CLIENTS = {
 }
 
 # Обёртки, которые стоят перед настоящей командой и не меняют её сути.
-COMMAND_WRAPPERS = {"sudo", "env", "time", "nohup", "nice", "doas", "command"}
+COMMAND_WRAPPERS = {"sudo", "env", "time", "nohup", "nice", "doas", "command", "xargs"}
+
+# Флаги обёрток, забирающие значение отдельным токеном: sudo -u root rm ...
+WRAPPER_FLAGS_WITH_VALUE = {"-u", "--user", "-g", "--group", "-C", "--chdir"}
 
 # Примеры конфигов коммитятся намеренно и секретов не содержат.
 ENV_ALLOWED = {".env.example", ".env.sample", ".env.template", ".env.dist"}
@@ -91,11 +94,52 @@ def tokenize(segment):
 
 
 def strip_wrappers(tokens):
-    """Отбрасывает sudo/env и подобное, чтобы добраться до настоящей команды."""
+    """
+    Отбрасывает sudo/env и подобное, чтобы добраться до настоящей команды.
+
+    Снимать нужно не только имя обёртки, но и её флаги с присваиваниями:
+    без этого `sudo -u root rm -rf /` и `env FOO=bar rm -rf /` проходят мимо
+    всех правил, потому что первым токеном оказывается не rm.
+    """
     i = 0
-    while i < len(tokens) and tokens[i] in COMMAND_WRAPPERS:
-        i += 1
+    saw_wrapper = False
+    while i < len(tokens):
+        token = tokens[i]
+        if token in COMMAND_WRAPPERS:
+            saw_wrapper = True
+            i += 1
+            continue
+        if saw_wrapper:
+            if token.startswith("-"):
+                i += 1
+                if token in WRAPPER_FLAGS_WITH_VALUE and i < len(tokens):
+                    i += 1
+                continue
+            # env FOO=bar <команда> — присваивание перед именем команды.
+            if "=" in token and not token.startswith("="):
+                i += 1
+                continue
+        break
     return tokens[i:]
+
+
+def basename(path):
+    """Имя исполняемого файла без директории и расширения .exe."""
+    name = path_basename(path)
+    return name[:-4] if name.lower().endswith(".exe") else name
+
+
+def path_basename(path):
+    """Последний элемент пути; разделители обеих ОС считаются одинаковыми."""
+    return path.replace("\\", "/").rstrip("/").split("/")[-1]
+
+
+def is_protected_env(path):
+    """Файл с секретами, запись в который запрещена. Примеры конфигов исключены."""
+    base = path_basename(path.strip("\"'"))
+    if base in ENV_ALLOWED:
+        return False
+    return base == ".env" or base.startswith(".env.")
 
 
 # ---------------------------------------------------------------------------
@@ -173,16 +217,44 @@ def check_git(tokens, _segment):
     args = rest[idx + 1:]
 
     if subcommand == "push":
-        forced = any(a == "--force" or (a.startswith("-") and not a.startswith("--") and "f" in a) for a in args)
-        if forced and not any(a.startswith("--force-with-lease") for a in args):
+        if any(a == "--mirror" for a in args):
             deny(
-                "BLOCKED [P/Privileged]: git push --force — принудительная перезапись истории.\n\n"
+                "BLOCKED [P/Privileged]: git push --mirror — приведение удалённого репозитория "
+                "к точной копии локального.\n\n"
+                "Причина блокировки: перезаписываются все ветки и теги, а ветки, которых нет "
+                "локально, удаляются на сервере. Одна команда затрагивает работу всей команды.\n\n"
+                "Альтернативы:\n"
+                "  1. git push origin <ветка> — отправить конкретную ветку\n"
+                "  2. git push --tags — если нужны именно теги\n"
+                "  3. Если зеркалирование действительно нужно — выполни команду сам, вне агента"
+            )
+
+        # Удаление ветки на сервере: --delete или рефспек, начинающийся с двоеточия.
+        if any(a in ("--delete", "-d") for a in args) or any(a.startswith(":") for a in args):
+            deny(
+                "BLOCKED [P/Privileged]: git push --delete — удаление ветки на сервере.\n\n"
+                "Причина блокировки: ветка исчезает у всех, кто с ней работает. "
+                "Класс P по principles/03 — подтверждать каждый раз, даже если разрешали раньше.\n\n"
+                "Альтернативы:\n"
+                "  1. Убедись, что ветка влита, и удали её сам через интерфейс хостинга\n"
+                "  2. Локальную копию можно удалить безопасно: git branch -d <ветка>\n"
+                "  3. Если ветка нужна как архив — поставь на неё тег перед удалением"
+            )
+
+        forced = any(a == "--force" or (a.startswith("-") and not a.startswith("--") and "f" in a) for a in args)
+        # Рефспек, начинающийся с плюса, — тот же force, только другим синтаксисом.
+        plus_refspec = any(a.startswith("+") for a in args)
+        if (forced or plus_refspec) and not any(a.startswith("--force-with-lease") for a in args):
+            syntax = "git push origin +<ветка>" if plus_refspec and not forced else "git push --force"
+            deny(
+                "BLOCKED [P/Privileged]: {} — принудительная перезапись истории.\n\n"
                 "Причина блокировки: теряются коммиты, которые уже видят другие разработчики. "
-                "Восстановить их можно только из чужих локальных копий.\n\n"
+                "Восстановить их можно только из чужих локальных копий.\n"
+                "Рефспек с плюсом впереди (+main) означает ровно то же, что и --force.\n\n"
                 "Альтернативы:\n"
                 "  1. git push --force-with-lease — блокируется, если кто-то запушил после тебя\n"
-                "  2. git push без флага — если конфликта нет\n"
-                "  3. git revert вместо перезаписи — история остаётся целой"
+                "  2. git push без флага и без плюса — если конфликта нет\n"
+                "  3. git revert вместо перезаписи — история остаётся целой".format(syntax)
             )
 
     if subcommand == "reset" and "--hard" in args:
@@ -232,9 +304,8 @@ def check_git(tokens, _segment):
 # Правило sql — запросы без WHERE и деструктив схемы
 # ---------------------------------------------------------------------------
 def check_sql(tokens, _segment):
-    if not tokens or strip_wrappers(tokens)[:1] == []:
-        return
-    if tokens[0] not in DB_CLIENTS:
+    # Клиент может быть вызван по абсолютному пути или с расширением .exe.
+    if not tokens or basename(tokens[0]) not in DB_CLIENTS:
         return
 
     # SQL приезжает отдельным аргументом после -c/-e, кавычки уже сняты shlex.
@@ -282,10 +353,7 @@ def check_sql(tokens, _segment):
 def check_env(tool_name, file_path, _agent):
     if tool_name not in WRITE_TOOLS or not file_path:
         return
-    base = file_path.replace("\\", "/").rstrip("/").split("/")[-1]
-    if base in ENV_ALLOWED:
-        return
-    if base == ".env" or base.startswith(".env."):
+    if is_protected_env(file_path):
         deny(
             "BLOCKED [P/Privileged]: запись в {} — правка файла с секретами.\n\n"
             "Причина блокировки: .env содержит ключи и пароли. Изменение вслепую ломает "
@@ -345,7 +413,52 @@ def check_memory(tool_name, file_path, agent):
     )
 
 
-BASH_RULES = {"fs": check_fs, "git": check_git, "sql": check_sql}
+def check_env_bash(tokens, segment):
+    """
+    Та же защита .env, но со стороны Bash.
+
+    Без этой половины правило бесполезно: `echo KEY=... > .env` пишет в файл
+    мимо инструментов Edit и Write, то есть мимо проверки по имени файла.
+    """
+    def blocked(path, how):
+        deny(
+            "BLOCKED [P/Privileged]: {} — {}.\n\n"
+            "Причина блокировки: .env содержит ключи и пароли. Перезапись через "
+            "оболочку так же необратима, как через редактор, и так же ломает окружение.\n\n"
+            "Альтернативы:\n"
+            "  1. Чтение не ограничено: cat .env, grep KEY .env работают\n"
+            "  2. Нужную переменную добавь в .env.example, значение перенесёт владелец\n"
+            "  3. Если правка действительно нужна — сделай её сам, вне агента".format(path, how)
+        )
+
+    # Перенаправление вывода в файл: > .env, >> .env.local
+    for match in re.finditer(r">>?\s*([^\s;|&<>]+)", segment):
+        if is_protected_env(match.group(1)):
+            blocked(match.group(1).strip("\"'"), "перезапись через перенаправление вывода")
+
+    if not tokens:
+        return
+    command = basename(tokens[0])
+    args = tokens[1:]
+
+    # Правка на месте, удаление, запись через tee и подобное.
+    if command == "sed" and any(a.startswith("-i") for a in args):
+        targets = [a for a in args if not a.startswith("-")]
+    elif command in ("rm", "tee", "truncate", "shred", "unlink"):
+        targets = [a for a in args if not a.startswith("-")]
+    elif command in ("mv", "cp", "install"):
+        # У копирования и перемещения опасен только адресат — последний аргумент.
+        positional = [a for a in args if not a.startswith("-")]
+        targets = positional[-1:] if len(positional) > 1 else []
+    else:
+        return
+
+    for target in targets:
+        if is_protected_env(target):
+            blocked(target, "изменение или удаление командой " + command)
+
+
+BASH_RULES = {"fs": check_fs, "git": check_git, "sql": check_sql, "env": check_env_bash}
 PATH_RULES = {"env": check_env, "memory": check_memory}
 ALL_RULES = list(BASH_RULES) + list(PATH_RULES)
 

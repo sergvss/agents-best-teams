@@ -83,6 +83,24 @@ class TestFilesystem(GuardTestCase):
             with self.subTest(command=command):
                 self.assertBlocked(bash(command), "P/Privileged")
 
+    def test_sees_through_command_wrappers(self):
+        # Обёртка со своими флагами не должна прятать команду от правила.
+        for command in [
+            "sudo rm -rf /",
+            "sudo -u root rm -rf /",
+            "sudo -i rm -rf /",
+            "env FOO=bar rm -rf /",
+            "env FOO=bar BAZ=qux rm -rf .",
+            "nohup rm -rf ~",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
+    def test_wrappers_do_not_break_safe_commands(self):
+        for command in ["sudo ls -la", "env FOO=bar npm test", "sudo -u postgres psql -c 'SELECT 1'"]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command))
+
     def test_blocks_variable_in_target(self):
         for command in ['rm -rf "$BUILD_DIR/"', "rm -rf $HOME", "rm -rf %TEMP%"]:
             with self.subTest(command=command):
@@ -117,10 +135,28 @@ class TestGit(GuardTestCase):
             with self.subTest(command=command):
                 self.assertBlocked(bash(command), marker)
 
+    def test_blocks_force_by_alternative_syntax(self):
+        # Плюс перед рефспеком — тот же force, только другим синтаксисом,
+        # а --mirror ещё и удаляет на сервере ветки, которых нет локально.
+        for command in [
+            "git push origin +main",
+            "git push origin +refs/heads/main:refs/heads/main",
+            "git push --mirror origin",
+            "sudo git push --force",
+            # Удаление ветки на сервере — класс P по principles/03.
+            "git push origin --delete feature",
+            "git push origin :feature",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
     def test_allows_safe(self):
         for command in [
             "git push --force-with-lease origin main",
             "git push origin main",
+            "git push origin main:main",
+            "git push --tags",
+            "git push origin HEAD:refs/heads/feature",
             "git push -u origin feature",
             "git push --follow-tags",
             "git reset --soft HEAD~1",
@@ -145,6 +181,11 @@ class TestSql(GuardTestCase):
             'psql -c "TRUNCATE TABLE logs"',
             'sqlite3 app.db "DROP TABLE users"',
             'psql -c "DROP DATABASE prod"',
+            # Клиент по абсолютному пути и с расширением .exe — тот же клиент.
+            '/usr/bin/psql -c "DELETE FROM users"',
+            'C:/tools/psql.exe -c "DELETE FROM users"',
+            '"C:\\tools\\psql.exe" -c "DELETE FROM users"',
+            'sudo -u postgres psql -c "DELETE FROM users"',
         ]:
             with self.subTest(command=command):
                 self.assertBlocked(bash(command), "P/Privileged")
@@ -190,6 +231,37 @@ class TestEnv(GuardTestCase):
     def test_read_is_not_touched(self):
         # Хук висит на Edit и Write; чтение .env остаётся разрешённым.
         self.assertAllowed(edit(".env", tool="Read"))
+
+    def test_blocks_writes_through_shell(self):
+        # Без этой половины правило бесполезно: перенаправление вывода пишет
+        # в файл мимо инструментов Edit и Write.
+        for command in [
+            "echo API_KEY=hacked > .env",
+            "echo X=1 >> .env",
+            "cat /dev/null > .env",
+            "printf '' > config/.env.local",
+            "sed -i s/a/b/ .env",
+            "rm .env",
+            "rm -f .env.production",
+            "cp .env.example .env",
+            "mv other.txt .env",
+            "tee .env",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
+    def test_shell_reads_and_examples_pass(self):
+        for command in [
+            "cat .env",
+            "grep API_KEY .env",
+            "source .env",
+            "echo TEMPLATE=1 > .env.example",
+            "cp .env.example .env.sample",
+            "rm build/output.txt",
+            "sed -i s/a/b/ src/app.py",
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command))
 
 
 class TestAgentMemory(GuardTestCase):
