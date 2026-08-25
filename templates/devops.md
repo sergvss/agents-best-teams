@@ -4,7 +4,15 @@ description: >
   DevOps/релиз-инженер. Версии, CHANGELOG, git-операции, Docker, env-переменные,
   бэкапы БД, деплой. НЕ пишет продуктовый код.
 tools: Read, Edit, Glob, Grep, Bash
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <reasoning-LLM>
+permissionMode: default       # релизы, деплой, git-операции — класс W/P, principles/03
+maxTurns: 25                  # бюджет шагов, principles/04
+effort: high                  # цена ошибки в релизе высокая, principles/04
+# memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
+#                             # агенту Write, которого он лишён намеренно (новые файлы —
+#                             # только по согласованию). Хук ограничения путей — principles/09.
 color: cyan
 ---
 

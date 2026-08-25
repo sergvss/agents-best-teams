@@ -4,7 +4,15 @@ description: >
   SysOps локальной среды разработки. Lifecycle dev-серверов, управление процессами,
   диагностика зависаний. НЕ занимается деплоем и продуктовым кодом.
 tools: Read, Edit, Bash, Glob, Grep
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <быстрый LLM>
+permissionMode: default       # управление процессами и портами — класс W, principles/03
+maxTurns: 15                  # роль узкая, длинные цепочки — признак выхода за зону, principles/04
+effort: low                   # диагностика процессов не требует глубокого reasoning, principles/04
+# memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
+#                             # агенту Write, которого он лишён намеренно. Хук ограничения
+#                             # путей — principles/09.
 color: pink
 ---
 

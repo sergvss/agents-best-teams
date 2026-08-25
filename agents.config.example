@@ -26,7 +26,7 @@ vendor       = "anthropic"          # ВАЖНО: задаётся явно дл
                                     # openai | google | anthropic | xai | mistral | ...
                                     # Даже если модель управляется IDE, vendor нужен для правила
                                     # PRIMARY.vendor ≠ SIDE-A.vendor ≠ SIDE-B.vendor.
-model        = "claude-opus-4-7"    # подсказка, для отчётов; фактически модель управляется платформой
+model        = "claude-opus-5"      # подсказка, для отчётов; фактически модель управляется платформой
 memory_dir   = ".claude/agent-memory"   # путь к persistent memory; для Cursor — ".cursor/agent-memory" и т.п.
 
 # ------------------------------------------------------------
@@ -43,19 +43,31 @@ memory_dir   = ".claude/agent-memory"   # путь к persistent memory; для 
 # ------------------------------------------------------------
 # [side_a] — первый внешний ревьюер
 # ------------------------------------------------------------
-# Дефолты подобраны как STRONG-tier (gpt-5.5 / gemini-3.1-pro-preview / claude-sonnet-4-6).
-# Это уровень для серьёзного ревью кода — он реально углубляется в diff и ловит
-# концептуальные блокеры. Mid-tier (mini / flash-lite) на ревью НЕ берут — они для
-# классификации/роутинга, на ревью часто отвечают пустым approve.
+# КАК ВЫБИРАТЬ МОДЕЛЬ: по измеримому порогу, а не по названию тира.
+#
+# Порог для ревью — coding_index >= 74 (Artificial Analysis; виден в каталоге
+# OpenRouter). Для точек высокого риска (прод-биллинг, прод-RBAC, DDL прода) —
+# coding_index >= 77 и reasoning effort = high.
+#
+# Почему порог, а не тир: названия тиров перестали означать уровень. На август
+# 2026 модель Google с "flash" в имени (coding 76.1) обходит вчерашний флагман
+# OpenAI (coding 74.9) и стоит в 13 раз дешевле. Ориентироваться на слова
+# "mini" / "flash" / "pro" в слаге больше нельзя — только на индекс.
+#
+# Проверить актуальные значения самому:
+#   каталог OpenRouter → сортировка "coding-high-to-low" → колонка coding_index
 #
 # Подробности и обоснование — principles/04-orchestration-budgets.md,
-# раздел «Выбор модели для ревью» (4 класса моделей).
+# раздел «Выбор модели для ревью».
 
 [side_a]
 vendor       = "openai"              # openai | google | anthropic | xai | mistral | ...
 gateway      = "openrouter"          # openrouter | openai | google | anthropic | direct
-model        = "openai/gpt-5.5"      # STRONG-tier. На прод-биллинг/прод-RBAC поднимать до "openai/gpt-5.5-pro" (top).
-                                     # На бюджетный режим / Tier-1 опустить до "openai/gpt-5.4-mini" (mid).
+model        = "openai/gpt-5.6-sol"  # coding 77.4, $2/$10 за M токенов. Проходит порог высокого риска.
+effort       = "high"                # low | medium | high | xhigh | max — вторая ручка цены наравне с моделью.
+                                     # Значение здесь — дефолт для Tier-3. На Tier-2 агент вправе
+                                     # опустить до "medium": принцип — экономить effort'ом, а не
+                                     # моделью ниже порога. Таблица по типам прогона — principles/04.
 api_key_env  = "OPENROUTER_API_KEY"
 base_url     = "https://openrouter.ai/api/v1"
 max_tokens   = 6000
@@ -69,8 +81,10 @@ timeout_s    = 90
 [side_b]
 vendor       = "google"
 gateway      = "openrouter"
-model        = "google/gemini-3.1-pro-preview"   # STRONG-tier. На top — "google/gemini-3.1-pro-thinking".
-                                                 # На бюджет — "google/gemini-3.1-flash-lite-preview".
+model        = "google/gemini-3.7-flash"   # coding 76.1, $0.375/$1.875 за M токенов.
+                                           # Проходит порог ревью при цене на порядок ниже SIDE-A —
+                                           # наглядный пример, почему тир по имени больше не работает.
+effort       = "high"
 api_key_env  = "OPENROUTER_API_KEY"
 base_url     = "https://openrouter.ai/api/v1"
 max_tokens   = 6000
@@ -79,23 +93,31 @@ timeout_s    = 90
 # ------------------------------------------------------------
 # Альтернативные составы тройки — раскомментируй для смены конфигурации
 # ------------------------------------------------------------
+# Значения coding_index — на 25 августа 2026. Переоценивай раз в квартал:
+# каталог протухает, правило порога — нет.
+#
 # Дефолтная тройка (PRIMARY = Claude в Claude Code):
-#   PRIMARY = anthropic (claude-opus-4-7 платформой)
-#   SIDE-A  = openai    (gpt-5.5)
-#   SIDE-B  = google    (gemini-3.1-pro-preview)
+#   PRIMARY = anthropic (claude-opus-5 платформой, coding 78.0)
+#   SIDE-A  = openai    (openai/gpt-5.6-sol, coding 77.4)
+#   SIDE-B  = google    (google/gemini-3.7-flash, coding 76.1)
 #
 # Если PRIMARY = GPT (Codex/Copilot Workspace):
-#   SIDE-A = anthropic  (claude-sonnet-4-6)
-#   SIDE-B = google     (gemini-3.1-pro-preview)
+#   SIDE-A = anthropic  (anthropic/claude-opus-5, coding 78.0)
+#   SIDE-B = google     (google/gemini-3.7-flash, coding 76.1)
 #
 # Если PRIMARY = Gemini (Cursor/Cline с Gemini):
-#   SIDE-A = anthropic  (claude-sonnet-4-6)
-#   SIDE-B = openai     (gpt-5.5)
+#   SIDE-A = anthropic  (anthropic/claude-opus-5, coding 78.0)
+#   SIDE-B = openai     (openai/gpt-5.6-sol, coding 77.4)
 #
-# Бюджетный режим (только для частых Tier-2 на стабильной кодовой базе):
-#   SIDE-A model = "openai/gpt-5.4-mini"
-#   SIDE-B model = "google/gemini-3.1-flash-lite-preview"
-#   ⚠ Цена $0.03/прогон, но качество поверхностное — НЕ использовать на T3/security/billing.
+# Бюджетный режим (частые Tier-2 на стабильной кодовой базе):
+#   SIDE-A vendor = "xai"   model = "x-ai/grok-4.6"           # coding 76.8, $2/$6
+#   SIDE-B vendor = "google" model = "google/gemini-3.7-flash" # coding 76.1, $0.375/$1.875
+#   ⚠ Меняя модель, меняй и vendor — правило независимости проверяется по нему.
+#   Оба выше порога 74 — экономия здесь не покупается качеством ревью.
+#   Экономить правильнее через effort = "medium", а не через модель ниже порога.
+#
+# ⚠ Ниже порога 74 не опускаться на ревью ни в каком режиме: модель отвечает
+#   пустым approve и ревью превращается в ритуал (эмпирика — principles/04).
 
 # ------------------------------------------------------------
 # [budget] — лимиты на платные API-вызовы SIDE-моделей

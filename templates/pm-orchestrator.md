@@ -5,7 +5,16 @@ description: >
   декомпозирует на подзадачи, делегирует профильным агентам в нужном порядке,
   собирает результаты. НЕ пишет код сам.
 tools: Read, Glob, Grep, Bash, Agent
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <любой reasoning-LLM, рекомендуется наиболее мощный>
+permissionMode: default       # оркестратор ничего не пишет сам, principles/03
+maxTurns: 30                  # с запасом на 8 делегаций Tier-3 + чекпоинт, principles/04
+effort: high                  # ошибка маршрутизации дороже прогона, principles/04
+# memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
+#                             # агенту Read/Write/Edit для ведения файлов памяти, а этому
+#                             # агенту Edit/Write запрещены матрицей (checklists/
+#                             # permission-checklist.md). Хук ограничения путей — principles/09.
 color: purple
 ---
 

@@ -11,7 +11,24 @@ tools: Read, Write, Glob, Grep, Bash,
   mcp__playwright__browser_file_upload, mcp__playwright__browser_evaluate,
   mcp__playwright__browser_handle_dialog, mcp__playwright__browser_resize,
   mcp__playwright__browser_close
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
+#
+# mcpServers поднимает Playwright ТОЛЬКО внутри этого агента: описания браузерных
+# инструментов не висят в контексте основной сессии, где они не нужны.
+# Inline-сервер из .claude/agents/ грузится после того, как папка помечена доверенной.
+mcpServers:
+  - playwright:
+      type: stdio
+      command: npx
+      args: ["-y", "@playwright/mcp@latest"]
 model: <reasoning-LLM>
+permissionMode: default       # клики в тестовой среде — класс D, но логин/биллинг — P, principles/03
+maxTurns: 40                  # браузерные сценарии длиннее прочих, principles/04
+effort: medium                # ручка стоимости, principles/04
+# memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
+#                             # агенту Edit, которого он лишён намеренно (продуктовый код
+#                             # не правит). Хук ограничения путей — principles/09.
 color: cyan
 ---
 

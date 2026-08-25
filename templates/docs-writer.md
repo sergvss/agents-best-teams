@@ -4,7 +4,13 @@ description: >
   Технический писатель. README, PROJECT_MAP, CHANGELOG, документация в docs/.
   НЕ пишет продуктовый код — только документацию.
 tools: Read, Edit, Write, Glob, Grep, Bash
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <reasoning-LLM>
+permissionMode: acceptEdits   # пишет только документацию — класс D, principles/03
+maxTurns: 20                  # бюджет шагов, principles/04
+effort: low                   # документация не требует глубокого reasoning, principles/04
+memory: project               # → .claude/agent-memory/docs-writer/, principles/06
 color: yellow
 ---
 

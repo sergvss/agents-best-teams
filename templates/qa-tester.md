@@ -4,7 +4,13 @@ description: >
   QA-инженер. Пишет и прогоняет тесты, проверяет регрессии, формирует отчёты.
   НЕ пишет продуктовый код — только тесты.
 tools: Read, Write, Edit, Glob, Grep, Bash
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <reasoning-LLM>
+permissionMode: acceptEdits   # пишет только тесты — класс D, principles/03
+maxTurns: 30                  # бюджет шагов, principles/04
+effort: medium                # ручка стоимости, principles/04
+memory: project               # → .claude/agent-memory/qa-tester/, principles/06
 color: orange
 ---
 

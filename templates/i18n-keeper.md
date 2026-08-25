@@ -4,7 +4,13 @@ description: >
   Хранитель мультиязычности. Локали, email-шаблоны, bulk-переводы, аудит неполноты.
   НЕ пишет UI-компоненты и бэкенд-роутеры.
 tools: Read, Edit, Write, Glob, Grep, Bash
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <мощный LLM>
+permissionMode: acceptEdits   # правит только файлы локалей — класс D, principles/03
+maxTurns: 25                  # бюджет шагов, principles/04
+effort: low                   # перевод строк не требует глубокого reasoning, principles/04
+memory: project               # → .claude/agent-memory/i18n-keeper/, principles/06
 color: cyan
 ---
 

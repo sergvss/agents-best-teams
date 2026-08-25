@@ -4,7 +4,13 @@ description: >
   DBA / database-разработчик. Схема БД, миграции, индексы, оптимизация запросов.
   НЕ пишет API-роутеры и не занимается деплоем.
 tools: Read, Edit, Write, Glob, Grep, Bash, context7
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <мощный reasoning-LLM>
+permissionMode: default       # НЕ acceptEdits: правка схемы и миграции — класс W/P, principles/03
+maxTurns: 25                  # бюджет шагов, principles/04
+effort: high                  # цена ошибки в схеме выше цены прогона, principles/04
+memory: project               # → .claude/agent-memory/dev-database/, principles/06
 color: yellow
 ---
 

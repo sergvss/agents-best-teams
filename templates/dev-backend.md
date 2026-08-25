@@ -4,7 +4,13 @@ description: >
   Backend-разработчик. Роутеры, модели, схемы, миграции, тесты, интеграции.
   НЕ трогает frontend/ — это зона dev-frontend.
 tools: Read, Edit, Write, Glob, Grep, Bash
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <мощный reasoning-LLM>
+permissionMode: acceptEdits   # правит код без подтверждения на каждый файл — класс D, principles/03
+maxTurns: 30                  # бюджет шагов, principles/04
+effort: medium                # ручка стоимости, principles/04
+memory: project               # → .claude/agent-memory/dev-backend/, principles/06
 color: blue
 ---
 

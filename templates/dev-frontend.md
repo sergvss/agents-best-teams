@@ -4,7 +4,13 @@ description: >
   Frontend-разработчик. SPA: views, компоненты, стейт, роутинг, HTTP-клиент.
   НЕ трогает backend-код — это зона dev-backend.
 tools: Read, Edit, Write, Glob, Grep, Bash
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
+# Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <мощный reasoning-LLM>
+permissionMode: acceptEdits   # правит код без подтверждения на каждый файл — класс D, principles/03
+maxTurns: 30                  # бюджет шагов, principles/04
+effort: medium                # ручка стоимости, principles/04
+memory: project               # → .claude/agent-memory/dev-frontend/, principles/06
 color: green
 ---
 

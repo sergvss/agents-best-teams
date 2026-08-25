@@ -5,10 +5,17 @@ description: >
   security-issues, архитектурные ошибки, scope creep. НЕ пишет код — только
   замечания и рекомендации.
 tools: Read, Glob, Grep, Bash
-# Поле model — Claude Code-специфичная конвенция. Для других платформ —
-# их собственный механизм (Cursor / Codex / Cline). По смыслу здесь нужна
-# reasoning-модель — твой PRIMARY или эквивалентного уровня (см. agents.config).
+# Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents). Для других
+# платформ — их собственный механизм (Cursor / Codex / Cline). По смыслу в model здесь
+# нужна reasoning-модель — твой PRIMARY или эквивалентного уровня (см. agents.config).
 model: <твой-PRIMARY-или-другая-reasoning-модель>
+permissionMode: default       # ревьюер ничего не пишет, principles/03
+maxTurns: 20                  # бюджет шагов, principles/04
+effort: high                  # пропущенный блокер дороже прогона, principles/04
+# memory: project             # ⚠ НЕ включать без хука: поле memory автоматически выдаёт
+#                             # агенту Read/Write/Edit для ведения файлов памяти — и ломает
+#                             # главную гарантию этой роли («у ревьюера физически нет Edit»).
+#                             # Хук ограничения путей — principles/09.
 color: red
 ---
 
