@@ -1,0 +1,50 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  guard:
+    name: Защитные хуки и связность документации
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Нижняя граница — заявленная в hooks/README, верхняя — актуальная.
+        python-version: ["3.9", "3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Прогон тестов
+        run: python -X utf8 hooks/tests/test_guard.py
+
+  manifests:
+    name: Манифесты плагина
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверка JSON
+        run: |
+          for file in .claude-plugin/plugin.json .claude-plugin/marketplace.json \
+                      hooks/hooks.json hooks/settings.example.json; do
+            python -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8'))" "$file"
+            echo "OK $file"
+          done
+
+      - name: Версия в VERSION и plugin.json совпадают
+        run: |
+          version_file=$(tr -d '[:space:]' < VERSION)
+          version_manifest=$(python -c "import json; print(json.load(open('.claude-plugin/plugin.json', encoding='utf-8'))['version'])")
+          if [ "$version_file" != "$version_manifest" ]; then
+            echo "VERSION=$version_file, plugin.json=$version_manifest — расходятся"
+            exit 1
+          fi
+          echo "OK $version_file"
