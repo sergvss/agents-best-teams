@@ -25,7 +25,8 @@ GUARD = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "gua
 def run_hook(payload, rules=None):
     """Вызывает guard.py и возвращает решение: None = разрешено, строка = причина отказа."""
     cmd = [sys.executable, "-X", "utf8", GUARD]
-    if rules:
+    if rules is not None:
+        # Именно is not None: пустая строка — валидный тестовый случай.
         cmd += ["--rules", rules]
     proc = subprocess.run(
         cmd,
@@ -323,6 +324,15 @@ class TestContract(GuardTestCase):
         # С выключенным правилом git та же команда должна проходить.
         self.assertIsNotNone(run_hook(bash("git push --force"), rules="fs,git,sql"))
         self.assertIsNone(run_hook(bash("git push --force"), rules="fs,sql"))
+
+    def test_misconfiguration_fails_closed(self):
+        # Опечатка и пустой список — два способа молча остаться без защиты.
+        # Хук обязан отказать в обоих случаях, а не пропустить команду.
+        for rules, marker in [("fs,gti", "неизвестные правила"), ("", "пуст"), ("   ", "пуст")]:
+            with self.subTest(rules=repr(rules)):
+                reason = run_hook(bash("ls -la"), rules=rules)
+                self.assertIsNotNone(reason, "конфигурация принята молча")
+                self.assertIn(marker, reason)
 
     def test_deny_payload_shape(self):
         proc = subprocess.run(
