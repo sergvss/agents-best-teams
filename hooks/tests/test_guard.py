@@ -348,6 +348,103 @@ class TestContract(GuardTestCase):
         self.assertTrue(block["permissionDecisionReason"].startswith("BLOCKED ["))
 
 
+class TestShellParsingBypasses(GuardTestCase):
+    """
+    Обходы, найденные триангулированным ревью. Общий корень у всех один:
+    наивный разбор команды. Каждый случай проверялся вручную и подтверждался
+    до того, как попасть сюда.
+    """
+
+    def test_command_separators(self):
+        for command in [
+            "echo ok\nrm -rf /",          # перевод строки — тоже разделитель
+            "echo ok\r\nrm -rf /",
+            "true & rm -rf /",            # одиночный & запускает вторую команду
+            "cd /tmp; rm -rf .",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
+    def test_nested_shell_invocation(self):
+        for command in [
+            "sh -c 'rm -rf /'",
+            'bash -c "rm -rf /"',
+            "sh -c 'sh -c \"rm -rf /\"'",
+            "sudo sh -c 'git push --force'",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command))
+
+    def test_absolute_and_prefixed_command_paths(self):
+        for command in [
+            "/bin/rm -rf /",
+            "/usr/bin/git reset --hard",
+            "LC_ALL=C rm -rf /",          # присваивание без env перед командой
+            "CI=true git reset --hard",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command))
+
+    def test_git_forms_missed_before(self):
+        for command in [
+            "git clean --force --dir",    # длинные флаги
+            "git checkout -- . README",   # второй путь снимал блокировку
+            "git restore .",              # современная замена checkout --
+            "git restore --worktree .",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "W/Write")
+
+    def test_sql_statement_level_checks(self):
+        for command in [
+            # WHERE в подзапросе не защищает внешний UPDATE
+            'psql -c "UPDATE t SET x = (SELECT y FROM s WHERE s.id = 1)"',
+            # WHERE в первом операторе не оправдывает второй
+            'psql -c "DELETE FROM a WHERE id = 1; DELETE FROM b"',
+            # WHERE в комментарии — не WHERE
+            'psql -c "DELETE FROM t /* WHERE id = 1 */"',
+            'mysql -e "UPDATE `orders` SET paid = 1"',
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
+    def test_quotes_do_not_cause_false_alarms(self):
+        # Символ внутри кавычек — не оператор оболочки и не команда.
+        for command in [
+            "echo 'пример: > .env'",
+            'git commit -m "чиним; тесты"',
+            "psql -c \"SELECT 'DELETE FROM users'\"",
+            "psql -c \"SELECT 'rm -rf /'\"",
+            "echo 'sh -c rm -rf /'",
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command))
+
+    def test_path_traversal_out_of_allowed_zone(self):
+        # Разрешённая зона проверяется по нормализованному пути.
+        for path, tool, agent in [
+            (".claude/agent-memory/code-reviewer/../../../src/app.py", "Edit", "code-reviewer"),
+            ("tests/../src/app.js", "Write", "browser-tester"),
+        ]:
+            with self.subTest(path=path, agent=agent):
+                self.assertBlocked(edit(path, tool, agent), agent)
+
+    def test_rule_list_has_no_duplicates(self):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(GUARD)))
+        import guard  # noqa: E402
+        self.assertEqual(
+            len(guard.ALL_RULES), len(set(guard.ALL_RULES)),
+            "правило env зарегистрировано в двух наборах и попадает в список дважды",
+        )
+
+    def test_deny_messages_do_not_suggest_blocked_alternatives(self):
+        # Самопротиворечивость из principles/09: предложенная альтернатива
+        # не должна сама блокироваться этим же хуком.
+        reason = run_hook(bash('rm -rf "$BUILD_DIR"'))
+        self.assertIsNotNone(reason)
+        self.assertNotIn("${VAR:?", reason)
+
+
 class TestPackaging(unittest.TestCase):
     """Упаковка плагина: манифесты, скиллы и конфигурации хуков не должны врать."""
 

@@ -83,8 +83,9 @@ Git деструктив:
   git push --mirror      → BLOCKED [P/Privileged]
   git push --delete      → BLOCKED [P/Privileged]  (удаление ветки на сервере)
   git reset --hard       → BLOCKED [W/Write]
-  git clean -fdx         → BLOCKED [W/Write]
+  git clean (без -n)     → BLOCKED [W/Write]
   git checkout -- .      → BLOCKED [W/Write]
+  git restore .          → BLOCKED [W/Write]  (современная форма того же отката)
 
 SQL деструктив без WHERE:
   DELETE FROM <table>  (без WHERE)  → BLOCKED [P/Privileged]

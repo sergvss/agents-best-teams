@@ -21,6 +21,7 @@ guard.py — защитные PreToolUse-хуки для команды аген
 
 import argparse
 import json
+import posixpath
 import re
 import shlex
 import sys
@@ -45,6 +46,17 @@ COMMAND_WRAPPERS = {"sudo", "env", "time", "nohup", "nice", "doas", "command", "
 
 # Флаги обёрток, забирающие значение отдельным токеном: sudo -u root rm ...
 WRAPPER_FLAGS_WITH_VALUE = {"-u", "--user", "-g", "--group", "-C", "--chdir"}
+
+# Оболочки, запускающие вложенную команду строкой: sh -c "rm -rf /".
+SHELL_WRAPPERS = {"sh", "bash", "zsh", "dash", "ksh", "ash"}
+
+# Операторы, разделяющие самостоятельные команды. Перенаправления (> и >>)
+# сюда не входят намеренно: они нужны правилу env внутри сегмента.
+SEGMENT_SEPARATORS = {";", "|", "||", "&&", "&", "|&", ";;", "(", ")"}
+
+# Глубина раскрытия вложенных sh -c. Дальше начинается не ошибка агента,
+# а намеренная обфускация, которую эти хуки закрывать не берутся.
+MAX_NESTING = 3
 
 # Примеры конфигов коммитятся намеренно и секретов не содержат.
 ENV_ALLOWED = {".env.example", ".env.sample", ".env.template", ".env.dist"}
@@ -79,18 +91,58 @@ def deny(reason):
     sys.exit(0)
 
 
-def split_segments(command):
-    """Режет составную команду на самостоятельные сегменты по ; && || |."""
-    return [s for s in re.split(r"&&|\|\||[;|]", command) if s.strip()]
+def newlines_to_separators(command):
+    """
+    Перевод строки вне кавычек — такой же разделитель команд, как точка с запятой.
+
+    Без этого `echo ok\\nrm -rf /` выглядит одной командой echo, и все правила
+    молча пропускают вторую строку.
+    """
+    out = []
+    quote = None
+    for char in command:
+        if quote:
+            out.append(char)
+            if char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+            out.append(char)
+        else:
+            out.append(";" if char in "\n\r" else char)
+    return "".join(out)
 
 
-def tokenize(segment):
-    """Разбирает сегмент на токены с учётом кавычек. Кавычки снимаются."""
+def lex(command):
+    """
+    Разбирает команду на токены, где операторы оболочки — отдельные токены,
+    а содержимое кавычек не режется.
+
+    punctuation_chars=True — то, ради чего берётся shlex вместо регулярок:
+    он не спутает разделитель команд с тем же символом внутри строки.
+    """
+    lexer = shlex.shlex(newlines_to_separators(command), posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
     try:
-        return shlex.split(segment, posix=True)
+        return list(lexer)
     except ValueError:
         # Незакрытая кавычка — разбираем грубо, лучше чем не проверить вовсе.
-        return segment.split()
+        return command.split()
+
+
+def split_segments(command):
+    """Режет составную команду на сегменты-списки токенов по операторам оболочки."""
+    segments, current = [], []
+    for token in lex(command):
+        if token in SEGMENT_SEPARATORS:
+            if current:
+                segments.append(current)
+                current = []
+        else:
+            current.append(token)
+    if current:
+        segments.append(current)
+    return segments
 
 
 def strip_wrappers(tokens):
@@ -105,20 +157,20 @@ def strip_wrappers(tokens):
     saw_wrapper = False
     while i < len(tokens):
         token = tokens[i]
-        if token in COMMAND_WRAPPERS:
+        if basename(token) in COMMAND_WRAPPERS:
             saw_wrapper = True
             i += 1
             continue
-        if saw_wrapper:
-            if token.startswith("-"):
+        # LC_ALL=C rm -rf / — присваивание перед командой работает и без env,
+        # поэтому снимается всегда, а не только после обёртки.
+        if "=" in token and not token.startswith("=") and not token.startswith("-"):
+            i += 1
+            continue
+        if saw_wrapper and token.startswith("-"):
+            i += 1
+            if token in WRAPPER_FLAGS_WITH_VALUE and i < len(tokens):
                 i += 1
-                if token in WRAPPER_FLAGS_WITH_VALUE and i < len(tokens):
-                    i += 1
-                continue
-            # env FOO=bar <команда> — присваивание перед именем команды.
-            if "=" in token and not token.startswith("="):
-                i += 1
-                continue
+            continue
         break
     return tokens[i:]
 
@@ -145,8 +197,9 @@ def is_protected_env(path):
 # ---------------------------------------------------------------------------
 # Правило fs — деструктив файловой системы
 # ---------------------------------------------------------------------------
-def check_fs(tokens, _segment):
-    if not tokens or tokens[0] != "rm":
+def check_fs(tokens):
+    # basename, а не точное имя: /bin/rm — та же команда, что и rm.
+    if not tokens or basename(tokens[0]) != "rm":
         return
 
     recursive = force = False
@@ -179,9 +232,10 @@ def check_fs(tokens, _segment):
                 "Причина блокировки: если переменная окажется пустой, путь схлопнется "
                 "в корень и команда снесёт систему. Проверить её значение хук не может.\n\n"
                 "Альтернативы:\n"
-                "  1. Подставь путь буквально, без переменной\n"
-                "  2. Сначала выведи цель и убедись, что она не пустая\n"
-                "  3. Добавь защиту: ${{VAR:?переменная пуста}} — оболочка прервётся сама"
+                "  1. Подставь путь буквально, без переменной — это снимет блокировку\n"
+                "  2. Сначала выведи цель отдельной командой и убедись, что она не пустая\n"
+                "  3. Если путь известен только во время выполнения — выполни удаление сам, "
+                "вне агента"
                 .format(target)
             )
 
@@ -203,8 +257,8 @@ def check_fs(tokens, _segment):
 # ---------------------------------------------------------------------------
 # Правило git — деструктивные операции с историей и рабочей копией
 # ---------------------------------------------------------------------------
-def check_git(tokens, _segment):
-    if not tokens or tokens[0] != "git":
+def check_git(tokens):
+    if not tokens or basename(tokens[0]) != "git":
         return
     rest = tokens[1:]
     # Пропускаем глобальные флаги вида -C <путь>, чтобы добраться до подкоманды.
@@ -270,13 +324,20 @@ def check_git(tokens, _segment):
 
     if subcommand == "clean":
         # -n и --dry-run ничего не удаляют, а показывают список — это безопасно
-        # и как раз то, что хук предлагает в качестве альтернативы.
-        dry_run = any(a == "--dry-run" or (a.startswith("-") and not a.startswith("--") and "n" in a) for a in args)
-        for a in args:
-            if dry_run:
-                break
-            if a.startswith("-") and not a.startswith("--") and any(c in a for c in "dfx"):
-                deny(
+        # и как раз то, что хук предлагает в качестве альтернативы. Интерактивный
+        # режим тоже спрашивает пользователя, поэтому пропускается.
+        def has_flag(short, long_name):
+            return any(
+                a == long_name
+                or (a.startswith("-") and not a.startswith("--") and short in a)
+                for a in args
+            )
+
+        safe = has_flag("n", "--dry-run") or has_flag("i", "--interactive")
+        # Проверяем не набор букв, а сам факт вызова: без -f git clean и так
+        # откажется работать, поэтому любой недry-run вызов — намерение удалять.
+        if not safe:
+            deny(
                     "BLOCKED [W/Write]: git clean — удаление неотслеживаемых файлов.\n\n"
                     "Причина блокировки: под удаление попадают .env, локальные конфиги "
                     "и всё, что намеренно не в git.\n\n"
@@ -286,33 +347,75 @@ def check_git(tokens, _segment):
                     "  3. Удали конкретные файлы вручную"
                 )
 
-    if subcommand == "checkout" and "--" in args:
-        tail = args[args.index("--") + 1:]
-        if tail and all(t in (".", "./", "*") for t in tail):
+    # git restore делает то же, что checkout --, и в справке git предлагается
+    # как современная замена, поэтому правило обязано покрывать обе формы.
+    if subcommand in ("checkout", "restore"):
+        tail = args[args.index("--") + 1:] if "--" in args else [a for a in args if not a.startswith("-")]
+        # any, а не all: `git checkout -- . README` откатывает всё точно так же,
+        # а наличие второго пути раньше снимало блокировку.
+        if any(t in (".", "./", "*", "./*", ":/") for t in tail):
             deny(
-                "BLOCKED [W/Write]: git checkout -- . — откат всех изменений рабочей копии.\n\n"
+                "BLOCKED [W/Write]: git {} по всей рабочей копии — откат всех изменений.\n\n"
                 "Причина блокировки: правки во всех файлах пропадают разом, включая те, "
                 "которых задача не касалась.\n\n"
                 "Альтернативы:\n"
-                "  1. git checkout -- <конкретный-файл>\n"
+                "  1. git {} -- <конкретный-файл>\n"
                 "  2. git stash — сохранить, а потом решить\n"
-                "  3. git diff — сначала посмотри, что именно потеряется"
+                "  3. git diff — сначала посмотри, что именно потеряется".format(
+                    subcommand, subcommand
+                )
             )
 
 
 # ---------------------------------------------------------------------------
 # Правило sql — запросы без WHERE и деструктив схемы
 # ---------------------------------------------------------------------------
-def check_sql(tokens, _segment):
+def sql_skeleton(text):
+    """
+    Оставляет от запроса только структуру: комментарии убирает, строковые
+    литералы и закавыченные идентификаторы заменяет заглушками.
+
+    Без этого `SELECT 'DELETE FROM users'` выглядит удалением, а
+    `UPDATE "users" SET ...` не опознаётся из-за кавычек вокруг имени таблицы.
+    """
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r"--[^\n]*", " ", text)
+    text = re.sub(r"'(?:[^']|'')*'", " 'lit' ", text)
+    text = re.sub(r'"[^"]*"', " ident ", text)
+    text = re.sub(r"`[^`]*`", " ident ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def strip_parenthesised(text):
+    """Убирает содержимое скобок: WHERE из подзапроса не защищает внешний запрос."""
+    out, depth = [], 0
+    for char in text:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            out.append(char)
+    return "".join(out)
+
+
+def check_sql(tokens):
     # Клиент может быть вызван по абсолютному пути или с расширением .exe.
     if not tokens or basename(tokens[0]) not in DB_CLIENTS:
         return
 
-    # SQL приезжает отдельным аргументом после -c/-e, кавычки уже сняты shlex.
-    body = " ".join(tokens[1:])
-    flat = re.sub(r"\s+", " ", body)
+    # SQL приезжает отдельным аргументом после -c/-e, кавычки уже сняты лексером.
+    skeleton = sql_skeleton(" ".join(tokens[1:]))
 
-    has_where = re.search(r"\bwhere\b", flat, re.I) is not None
+    # Каждый оператор проверяется отдельно: WHERE в первом не оправдывает второй.
+    for statement in skeleton.split(";"):
+        _check_sql_statement(statement)
+
+
+def _check_sql_statement(flat):
+    if not flat.strip():
+        return
+    has_where = re.search(r"\bwhere\b", strip_parenthesised(flat), re.I) is not None
 
     if re.search(r"\bdelete\s+from\b", flat, re.I) and not has_where:
         deny(
@@ -381,15 +484,18 @@ def check_memory(tool_name, file_path, agent):
     if denied is None:
         return
 
-    path = file_path.replace("\\", "/")
+    # normpath обязателен: без него путь вида
+    # .claude/agent-memory/code-reviewer/../../../src/app.py считается
+    # собственной папкой памяти и выпускает запись за пределы зоны.
+    path = "/" + posixpath.normpath(file_path.replace("\\", "/")).lstrip("/")
 
     # Собственная папка памяти — всегда разрешена, ради неё правило и существует.
-    if "/.claude/agent-memory/{}/".format(agent) in "/" + path.lstrip("/"):
+    if "/.claude/agent-memory/{}/".format(agent) in path:
         return
 
     # browser-tester пишет тест-артефакты: спеки, скриншоты, отчёты.
     if agent == "browser-tester" and tool_name == "Write":
-        if any(d in "/" + path.lstrip("/") for d in BROWSER_TESTER_WRITE_DIRS):
+        if any(d in path for d in BROWSER_TESTER_WRITE_DIRS):
             return
 
     if tool_name not in denied:
@@ -413,7 +519,7 @@ def check_memory(tool_name, file_path, agent):
     )
 
 
-def check_env_bash(tokens, segment):
+def check_env_bash(tokens):
     """
     Та же защита .env, но со стороны Bash.
 
@@ -431,15 +537,19 @@ def check_env_bash(tokens, segment):
             "  3. Если правка действительно нужна — сделай её сам, вне агента".format(path, how)
         )
 
-    # Перенаправление вывода в файл: > .env, >> .env.local
-    for match in re.finditer(r">>?\s*([^\s;|&<>]+)", segment):
-        if is_protected_env(match.group(1)):
-            blocked(match.group(1).strip("\"'"), "перезапись через перенаправление вывода")
+    # Перенаправление вывода в файл: > .env, >> .env.local.
+    # Ищем по токенам, а не по тексту: символ > внутри кавычек оператором
+    # не является, и `echo 'пример: > .env'` блокировать нельзя.
+    for index, token in enumerate(tokens):
+        if token in (">", ">>", ">|", "&>", ">&") and index + 1 < len(tokens):
+            target = tokens[index + 1]
+            if is_protected_env(target):
+                blocked(target, "перезапись через перенаправление вывода")
 
     if not tokens:
         return
     command = basename(tokens[0])
-    args = tokens[1:]
+    args = [t for t in tokens[1:] if t not in (">", ">>", ">|", "&>", ">&", "<")]
 
     # Правка на месте, удаление, запись через tee и подобное.
     if command == "sed" and any(a.startswith("-i") for a in args):
@@ -460,7 +570,32 @@ def check_env_bash(tokens, segment):
 
 BASH_RULES = {"fs": check_fs, "git": check_git, "sql": check_sql, "env": check_env_bash}
 PATH_RULES = {"env": check_env, "memory": check_memory}
-ALL_RULES = list(BASH_RULES) + list(PATH_RULES)
+# env зарегистрировано в обоих наборах, поэтому без дедупликации оно попадает
+# в список дважды и печатается пользователю как «fs, git, sql, env, env, memory».
+ALL_RULES = list(BASH_RULES) + [name for name in PATH_RULES if name not in BASH_RULES]
+
+
+def analyze_bash(command, enabled, depth=0):
+    """
+    Проверяет команду посегментно, раскрывая вложенные sh -c.
+
+    Без раскрытия `sh -c 'rm -rf /'` выглядит вызовом sh: имя опасной команды
+    спрятано внутри строкового аргумента, и ни одно правило до него не доходит.
+    """
+    if depth > MAX_NESTING:
+        return
+    for tokens in split_segments(command):
+        tokens = strip_wrappers(tokens)
+        if not tokens:
+            continue
+        if basename(tokens[0]) in SHELL_WRAPPERS:
+            for index in range(1, len(tokens) - 1):
+                if tokens[index] in ("-c", "--command"):
+                    analyze_bash(tokens[index + 1], enabled, depth + 1)
+            continue
+        for name, rule in BASH_RULES.items():
+            if name in enabled:
+                rule(tokens)
 
 
 def main():
@@ -514,12 +649,7 @@ def main():
     agent = data.get("agent_type") or ""
 
     if tool_name == "Bash":
-        command = tool_input.get("command") or ""
-        for segment in split_segments(command):
-            tokens = strip_wrappers(tokenize(segment))
-            for name, rule in BASH_RULES.items():
-                if name in enabled:
-                    rule(tokens, segment)
+        analyze_bash(tool_input.get("command") or "", enabled)
         return
 
     file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""

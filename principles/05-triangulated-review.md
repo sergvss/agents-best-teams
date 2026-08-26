@@ -92,7 +92,7 @@ git diff main...HEAD > /tmp/review.diff
 <your-side-b-cli> review --diff /tmp/review.diff --output /tmp/review-side-b.json
 ```
 
-Реализацию CLI-обёртки см. в `templates/external-llm-reviewer.md`. Конфигурацию (какие модели — SIDE-A и SIDE-B, лимиты бюджета) — в `agents.config` проекта (пример в корне репо: `agents.config.example`).
+Паттерн CLI-обёртки — в `../templates/external-llm-reviewer.md`: структура промпта, JSON-схема ответа и правило агрегации. Готового скрипта в репозитории нет, реализация остаётся на твоей стороне. Конфигурацию (какие модели SIDE-A и SIDE-B, лимиты бюджета) — в `agents.config` проекта, пример в корне: `../agents.config.example`.
 
 ---
 
