@@ -87,27 +87,45 @@
 
 ## Quick Install
 
-### Claude Code
+### Claude Code — плагином
+
+```
+/plugin marketplace add sergvss/agents-best-teams
+/plugin install agents-best-teams@sergvss
+```
+
+Что заработает сразу после установки:
+
+- **Защитные хуки** — без единой строки настройки. Блокируют деструктив файловой системы, force-push, запись в `.env`, SQL без WHERE.
+- **Чек-листы как скиллы** — `tool-checklist`, `permission-checklist`, `planning-checklist`, `context-checklist`, `implementation-path`. Claude подтягивает их сам, когда они уместны, или вызывай через `/`.
+- **`/agents-best-teams:setup-agent-team`** — соберёт команду ролей под твой проект: предложит состав по стеку, скопирует шаблоны, адаптирует плейсхолдеры, проверит результат.
+
+Шаблоны агентов плагин намеренно **не** устанавливает сам. В них плейсхолдеры под конкретный проект, и подставить их осмысленно может только человек или скилл сборки — плагин, который положил бы в `.claude/agents/` роли с `<your-project>` внутри, сделал бы хуже, чем ничего. Поэтому после установки запусти `setup-agent-team`.
+
+### Claude Code — вручную
+
+Если плагины не подходят: склонируй репозиторий и скопируй нужное.
 
 ```bash
-# 1. Склонируй репу рядом со своим проектом
-git clone https://github.com/<your-username>/agents-best-teams.git
+git clone https://github.com/sergvss/agents-best-teams.git
 cd agents-best-teams
 
-# 2. Скопируй шаблоны агентов в свой проект
+# Шаблоны агентов — адаптировать под проект после копирования
 cp -r templates/* /path/to/your-project/.claude/agents/
 
-# 3. (опционально) Скопируй принципы как контекст для оркестратора
-cp -r principles/ /path/to/your-project/.claude/agents-best-teams/
+# Защитные хуки
+mkdir -p /path/to/your-project/.claude/hooks
+cp hooks/guard.py /path/to/your-project/.claude/hooks/
+cp hooks/settings.example.json /path/to/your-project/.claude/settings.json
 
-# 4. Адаптируй pm-orchestrator.md под свои реальные роли
-$EDITOR /path/to/your-project/.claude/agents/pm-orchestrator.md
+# Чек-листы как скиллы
+cp -r skills/* /path/to/your-project/.claude/skills/
 ```
 
 ### Codex
 
 ```bash
-git clone https://github.com/<your-username>/agents-best-teams.git
+git clone https://github.com/sergvss/agents-best-teams.git
 cd agents-best-teams
 mkdir -p ~/.codex/skills/agents-best-teams
 cp -r templates principles checklists ~/.codex/skills/agents-best-teams/
@@ -210,21 +228,26 @@ on_overflow    = "ask_user"   # ask_user | block | warn
 
 ## Quick Start — применить за 30 минут
 
+> Установил плагином? Шаги 1-3 делает `/agents-best-teams:setup-agent-team`, шаг 4 уже выполнен. Ниже — что происходит под капотом и как сделать то же руками.
+
 1. **Скопируй шаблоны** в свой проект (см. Quick Install выше) и **создай `agents.config`** (см. «Настройка PRIMARY и SIDE-моделей»)
 2. **Адаптируй плейсхолдеры** в каждом шаблоне:
    - `<your-project>` — название проекта
    - `<backend-framework>` — FastAPI / Django / Express / Rails / ...
    - `<frontend-framework>` — Vue / React / Svelte / ...
-   - `<your-port>` — порт твоего dev-сервера
+   - `<порт>`, `<ваш-бэк-порт>`, `<ваш-фронт-порт>` — порты твоих dev-серверов
+   - `<ваш>` / `<ваша>` в строках описания стека — оставь один вариант из списка рядом, остальные удали
 
    После замены проверь что **все типы плейсхолдеров** заменены:
    ```bash
    # Подставь свою agents-директорию: .claude/agents/ для Claude Code,
    # .cursor/rules/ для Cursor, ~/.codex/skills/.../ для Codex, и т.д.
    AGENTS_DIR=".claude/agents"   # ← поменяй под свою платформу
-   grep -rEn '<your-[a-z-]+>|<ваш-[а-яa-z-]+>|<backend-framework>|<frontend-framework>|<reasoning-LLM[^>]*>|<быстрый[^>]*>|<мощный[^>]*>|<accepted-request-format>|<PRIMARY[^>]*>' "$AGENTS_DIR"
+   grep -rEn '<your-[a-z-]+>|<ваш[а-и]?>|<ваш-[а-яa-z-]+>|<backend-framework>|<frontend-framework>|<порт>|<reasoning-LLM[^>]*>|<быстрый[^>]*>|<мощный[^>]*>' "$AGENTS_DIR"
    # должно вернуть пусто — все плейсхолдеры заменены
    ```
+
+   > Проверка ищет только **установочные** плейсхолдеры. Разметка вида `<что сделать>`, `<step>`, `<вердикт>` и `<PORT>` в командах `lsof -ti :<PORT>` — это места, которые агент заполняет по ходу задачи. Их заменять не нужно, и в проверку они намеренно не входят.
 3. **Настрой `pm-orchestrator.md`** — таблицу маршрутизации под свои реальные роли. Минимально: dev-агент + qa-тестер + оркестратор
 4. **Поставь защитные hooks** — они уже реализованы, писать ничего не нужно:
    ```bash
@@ -274,9 +297,24 @@ checklists/          # Чек-листы перед действием аген�
 
 hooks/               # Рабочие защитные хуки (слой Claude Code)
 ├── guard.py                   # Все правила: fs, git, sql, env, memory
-├── settings.example.json      # Готовая конфигурация для подключения
+├── hooks.json                 # Автоподключение при установке плагином
+├── settings.example.json      # Ручное подключение без плагина
 ├── README.md                  # Установка, настройка, границы применимости
 └── tests/test_guard.py        # 28 тестов, половина — на ложные срабатывания
+
+skills/              # Чек-листы как вызываемые скиллы (слой Claude Code)
+├── setup-agent-team/          # Сборка команды ролей под проект
+├── tool-checklist/            # Перед вызовом инструмента
+├── permission-checklist/      # Матрица разрешений роли
+├── planning-checklist/        # Декомпозиция задачи
+├── context-checklist/         # Передача работы и управление контекстом
+└── implementation-path/       # Путь от задачи до коммита
+
+.claude-plugin/      # Манифесты для установки плагином
+├── plugin.json
+└── marketplace.json
+
+EXAMPLES.md          # Каждый принцип в виде «плохо → хорошо»
 ```
 
 > `hooks/` — единственная папка репозитория, привязанная к Claude Code. Всё остальное провайдер-нейтрально. Для других платформ механика описана в `hooks/README.md`, идея переносится без изменений.

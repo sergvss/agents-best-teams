@@ -8,7 +8,7 @@
             "type": "command",
             "command": "python",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard.py",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/guard.py",
               "--rules",
               "fs,git,sql,env"
             ],
@@ -24,7 +24,7 @@
             "type": "command",
             "command": "python",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard.py",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/guard.py",
               "--rules",
               "env,memory"
             ],

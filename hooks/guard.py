@@ -473,6 +473,20 @@ def main():
     args = parser.parse_args()
     enabled = {r.strip() for r in args.rules.split(",") if r.strip()}
 
+    # Опечатка в имени правила не должна тихо отключать защиту: молчаливо
+    # неработающий хук хуже отсутствующего, потому что создаёт уверенность.
+    unknown = sorted(enabled - set(ALL_RULES))
+    if unknown:
+        deny(
+            "guard.py: в конфигурации указаны неизвестные правила: {}.\n\n"
+            "Причина блокировки: опечатка в имени правила молча отключила бы защиту. "
+            "Хук отказывает, пока конфигурация не исправлена.\n\n"
+            "Допустимые правила: {}.\n"
+            "Где править: значение --rules в hooks.json или settings.json.".format(
+                ", ".join(unknown), ", ".join(ALL_RULES)
+            )
+        )
+
     raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     if not raw.strip():
         return

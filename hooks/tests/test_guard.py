@@ -338,6 +338,95 @@ class TestContract(GuardTestCase):
         self.assertTrue(block["permissionDecisionReason"].startswith("BLOCKED ["))
 
 
+class TestPackaging(unittest.TestCase):
+    """Упаковка плагина: манифесты, скиллы и конфигурации хуков не должны врать."""
+
+    def setUp(self):
+        self.root = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir)
+        )
+        sys.path.insert(0, os.path.join(self.root, "hooks"))
+        import guard  # noqa: E402
+        self.all_rules = set(guard.ALL_RULES)
+
+    def _json(self, *parts):
+        with open(os.path.join(self.root, *parts), encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_manifests_are_valid_and_agree(self):
+        plugin = self._json(".claude-plugin", "plugin.json")
+        market = self._json(".claude-plugin", "marketplace.json")
+        self.assertEqual(plugin["name"], "agents-best-teams")
+        listed = [p["name"] for p in market["plugins"]]
+        self.assertIn(plugin["name"], listed, "плагин не объявлен в маркетплейсе")
+        # Путь к хукам из манифеста обязан существовать.
+        hooks_path = plugin["hooks"].lstrip("./")
+        self.assertTrue(os.path.exists(os.path.join(self.root, hooks_path)))
+
+    def test_hook_configs_use_only_known_rules(self):
+        # Опечатка здесь молча отключила бы защиту — ровно этот случай
+        # уже был с правилом env в settings.example.json.
+        for config in (("hooks", "hooks.json"), ("hooks", "settings.example.json")):
+            data = self._json(*config)
+            for entry in data["hooks"]["PreToolUse"]:
+                for hook in entry["hooks"]:
+                    args = hook.get("args", [])
+                    if "--rules" in args:
+                        rules = set(args[args.index("--rules") + 1].split(","))
+                        with self.subTest(config=config[-1], rules=sorted(rules)):
+                            self.assertTrue(
+                                rules <= self.all_rules,
+                                "неизвестные правила: {}".format(sorted(rules - self.all_rules)),
+                            )
+
+    def test_bash_matcher_enables_shell_side_env_rule(self):
+        # Защита .env двусторонняя: без правила env на матчере Bash
+        # запись через перенаправление вывода проходит насквозь.
+        for config in (("hooks", "hooks.json"), ("hooks", "settings.example.json")):
+            data = self._json(*config)
+            for entry in data["hooks"]["PreToolUse"]:
+                if entry["matcher"] == "Bash":
+                    args = entry["hooks"][0]["args"]
+                    rules = args[args.index("--rules") + 1].split(",")
+                    with self.subTest(config=config[-1]):
+                        self.assertIn("env", rules)
+
+    def test_every_skill_is_well_formed(self):
+        skills_dir = os.path.join(self.root, "skills")
+        names = sorted(os.listdir(skills_dir))
+        self.assertTrue(names, "нет ни одного скилла")
+        for name in names:
+            path = os.path.join(skills_dir, name, "SKILL.md")
+            with self.subTest(skill=name):
+                self.assertTrue(os.path.exists(path), "нет SKILL.md у скилла " + name)
+                with open(path, encoding="utf-8") as fh:
+                    text = fh.read()
+                head = text.split("\n---", 2)[0]
+                # re.M обязателен: frontmatter начинается с ---, и без него
+                # ^ совпадал бы только с началом всего текста.
+                self.assertTrue(
+                    re.search(r"^name:\s*" + re.escape(name) + r"\s*$", head, re.M),
+                    "имя в frontmatter не совпадает с каталогом",
+                )
+                self.assertTrue(
+                    re.search(r"^description:\s*\S", head, re.M), "у скилла нет описания"
+                )
+
+    def test_checklist_skills_point_at_existing_files(self):
+        # Скиллы намеренно тонкие: содержимое живёт в checklists/.
+        # Ссылка на несуществующий файл сделала бы скилл пустым.
+        skills_dir = os.path.join(self.root, "skills")
+        for name in sorted(os.listdir(skills_dir)):
+            with open(os.path.join(skills_dir, name, "SKILL.md"), encoding="utf-8") as fh:
+                text = fh.read()
+            for ref in re.findall(r"checklists/([\w-]+\.md)", text):
+                with self.subTest(skill=name, ref=ref):
+                    self.assertTrue(
+                        os.path.exists(os.path.join(self.root, "checklists", ref)),
+                        "скилл ссылается на несуществующий чек-лист " + ref,
+                    )
+
+
 class TestMatrixMatchesDocs(unittest.TestCase):
     """
     MEMORY_MATRIX в guard.py и таблица в permission-checklist описывают одно и то же.

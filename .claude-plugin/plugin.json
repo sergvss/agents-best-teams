@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "agents-best-teams",
+  "displayName": "agents-best-teams",
+  "version": "1.0.0",
+  "description": "Методология команды AI-агентов: защитные хуки, чек-листы как скиллы и сборка команды ролей под проект",
+  "author": {
+    "name": "sergvss",
+    "url": "https://github.com/sergvss"
+  },
+  "homepage": "https://github.com/sergvss/agents-best-teams",
+  "repository": "https://github.com/sergvss/agents-best-teams",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "methodology",
+    "hooks",
+    "code-review",
+    "team",
+    "russian"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

@@ -1,0 +1,24 @@
+{
+  "name": "sergvss",
+  "owner": {
+    "name": "sergvss",
+    "url": "https://github.com/sergvss"
+  },
+  "description": "Методология построения команды AI-агентов для разработки ПО",
+  "plugins": [
+    {
+      "name": "agents-best-teams",
+      "source": "./",
+      "description": "Защитные хуки, чек-листы как скиллы и сборка команды ролей под проект",
+      "category": "workflow",
+      "keywords": [
+        "agents",
+        "methodology",
+        "hooks",
+        "code-review",
+        "team",
+        "russian"
+      ]
+    }
+  ]
+}
