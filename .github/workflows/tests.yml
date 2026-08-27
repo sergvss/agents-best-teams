@@ -39,6 +39,26 @@ jobs:
             echo "OK $file"
           done
 
+      - name: Бейдж версии читает манифест
+        # Бейдж в README берёт версию прямо из plugin.json, чтобы её не
+        # приходилось помнить в третьем месте. Проверяем, что источник на месте
+        # и что путь в бейдже указывает именно туда.
+        run: |
+          python - <<'PY'
+          import json, re, sys, urllib.parse
+          readme = open("README.md", encoding="utf-8").read()
+          match = re.search(r"img\.shields\.io/badge/dynamic/json\?url=([^&\"]+)", readme)
+          if not match:
+              print("::warning::в README нет динамического бейджа версии")
+              sys.exit(0)
+          target = urllib.parse.unquote(match.group(1))
+          if not target.endswith("/.claude-plugin/plugin.json"):
+              print("::warning::бейдж версии читает не манифест плагина: " + target)
+              sys.exit(0)
+          json.load(open(".claude-plugin/plugin.json", encoding="utf-8"))["version"]
+          print("бейдж версии указывает на манифест, поле version на месте")
+          PY
+
       - name: Свежесть таблицы моделей
         # Предупреждение, а не провал: устаревшая таблица моделей — повод
         # пересмотреть конфиг, а не запрещать людям собирать форк.

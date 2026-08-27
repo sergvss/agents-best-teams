@@ -7,6 +7,7 @@
 <p align="center"><em>«Один суперагент перестаёт справляться задолго до того, как ты успеваешь это заметить. Команда специализированных агентов с явными ролями, маршрутизацией и hooks вместо уговоров — масштабируется.»</em></p>
 
 <p align="center">
+  <a href="CHANGELOG.md"><img alt="Версия" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsergvss%2Fagents-best-teams%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue" /></a>
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <img alt="Claude Code compatible" src="https://img.shields.io/badge/Claude_Code-plugin-9333ea" />
   <img alt="Codex compatible" src="https://img.shields.io/badge/Codex-compatible-10b981" />
