@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "agents-best-teams",
   "displayName": "agents-best-teams",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Методология команды AI-агентов: защитные хуки, чек-листы как скиллы и сборка команды ролей под проект",
   "author": {
     "name": "sergvss",
