@@ -39,6 +39,27 @@ jobs:
             echo "OK $file"
           done
 
+      - name: Свежесть таблицы моделей
+        # Предупреждение, а не провал: устаревшая таблица моделей — повод
+        # пересмотреть конфиг, а не запрещать людям собирать форк.
+        run: |
+          python - <<'PY'
+          import datetime, re, sys
+          text = open("agents.config.example", encoding="utf-8").read()
+          match = re.search(r"models_reviewed:\s*(\d{4}-\d{2}-\d{2})", text)
+          if not match:
+              print("::warning::в agents.config.example нет отметки models_reviewed")
+              sys.exit(0)
+          reviewed = datetime.date.fromisoformat(match.group(1))
+          days = (datetime.date.today() - reviewed).days
+          if days > 92:
+              print("::warning::таблица моделей не сверялась {} дней "
+                    "(последняя сверка {}). Порог правила не устаревает, "
+                    "а слаги и цены — да.".format(days, reviewed))
+          else:
+              print("таблица моделей сверялась {} дней назад — свежо".format(days))
+          PY
+
       - name: Версия в VERSION и plugin.json совпадают
         run: |
           version_file=$(tr -d '[:space:]' < VERSION)
