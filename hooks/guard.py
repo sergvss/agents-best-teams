@@ -197,6 +197,67 @@ def is_protected_env(path):
 # ---------------------------------------------------------------------------
 # Правило fs — деструктив файловой системы
 # ---------------------------------------------------------------------------
+def written_paths(tokens):
+    """
+    Пути, в которые сегмент команды пишет: цели перенаправления и аргументы
+    команд, создающих или меняющих файлы. Чтение сюда не попадает.
+    """
+    targets = []
+    for index, token in enumerate(tokens):
+        if token in (">", ">>", ">|", "&>", ">&") and index + 1 < len(tokens):
+            targets.append(tokens[index + 1])
+
+    if not tokens:
+        return targets
+    command = basename(tokens[0])
+    args = [t for t in tokens[1:] if t not in (">", ">>", ">|", "&>", ">&", "<")]
+
+    if command == "sed" and any(a.startswith("-i") for a in args):
+        targets += [a for a in args if not a.startswith("-")]
+    elif command in ("rm", "tee", "truncate", "shred", "unlink", "touch", "mkdir"):
+        targets += [a for a in args if not a.startswith("-")]
+    elif command in ("mv", "cp", "install"):
+        positional = [a for a in args if not a.startswith("-")]
+        targets += positional[-1:] if len(positional) > 1 else []
+    return targets
+
+
+def check_memory_bash(tokens, agent):
+    """
+    Та же защита зоны роли, но со стороны Bash.
+
+    Без этой половины правило обходится тривиально: инструмент Write
+    заблокирован, а `cat > файл` пишет тот же файл мимо проверки. Хуже того,
+    платформа после блокировки Write сама предлагает агенту перейти на Bash.
+    """
+    if not agent or agent not in MEMORY_MATRIX:
+        return
+
+    for target in written_paths(tokens):
+        # lstrip("./") здесь недопустим: он снимает не префикс, а любые символы
+        # из набора, и съедает точку у .claude, ломая проверку своей же зоны.
+        path = "/" + posixpath.normpath(target.strip("\"'").replace("\\", "/")).lstrip("/")
+        if "/.claude/agent-memory/{}/".format(agent) in path:
+            continue
+        if agent == "browser-tester" and any(d in path for d in BROWSER_TESTER_WRITE_DIRS):
+            continue
+        deny(
+            "BLOCKED [W/Write]: {agent} пытается записать {target} командой оболочки.\n\n"
+            "Причина блокировки: этой роли запись вне своей зоны не положена по матрице "
+            "разрешений. Инструмент Write у неё уже ограничен — запись через оболочку "
+            "закрывается тем же правилом, иначе ограничение обходилось бы одной строкой.\n\n"
+            "Разрешено: .claude/agent-memory/{agent}/{extra}\n\n"
+            "Альтернативы:\n"
+            "  1. Нужен файл вне зоны — верни задачу оркестратору, её сделает профильный агент\n"
+            "  2. Заметка на будущее — пиши в свою папку памяти\n"
+            "  3. Ограничение мешает по делу — меняй матрицу осознанно, а не в обход".format(
+                agent=agent,
+                target=target,
+                extra=" и тест-артефакты в tests/" if agent == "browser-tester" else "",
+            )
+        )
+
+
 def check_fs(tokens):
     # basename, а не точное имя: /bin/rm — та же команда, что и rm.
     if not tokens or basename(tokens[0]) != "rm":
@@ -575,7 +636,7 @@ PATH_RULES = {"env": check_env, "memory": check_memory}
 ALL_RULES = list(BASH_RULES) + [name for name in PATH_RULES if name not in BASH_RULES]
 
 
-def analyze_bash(command, enabled, depth=0):
+def analyze_bash(command, enabled, agent="", depth=0):
     """
     Проверяет команду посегментно, раскрывая вложенные sh -c.
 
@@ -591,11 +652,14 @@ def analyze_bash(command, enabled, depth=0):
         if basename(tokens[0]) in SHELL_WRAPPERS:
             for index in range(1, len(tokens) - 1):
                 if tokens[index] in ("-c", "--command"):
-                    analyze_bash(tokens[index + 1], enabled, depth + 1)
+                    analyze_bash(tokens[index + 1], enabled, agent, depth + 1)
             continue
         for name, rule in BASH_RULES.items():
             if name in enabled:
                 rule(tokens)
+        # Правило зоны роли требует agent_type, поэтому вызывается отдельно.
+        if "memory" in enabled:
+            check_memory_bash(tokens, agent)
 
 
 def main():
@@ -649,7 +713,7 @@ def main():
     agent = data.get("agent_type") or ""
 
     if tool_name == "Bash":
-        analyze_bash(tool_input.get("command") or "", enabled)
+        analyze_bash(tool_input.get("command") or "", enabled, agent)
         return
 
     file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""

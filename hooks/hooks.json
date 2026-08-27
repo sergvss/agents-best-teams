@@ -10,7 +10,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/guard.py",
               "--rules",
-              "fs,git,sql,env"
+              "fs,git,sql,env,memory"
             ],
             "timeout": 10,
             "statusMessage": "Проверка команды защитными хуками"

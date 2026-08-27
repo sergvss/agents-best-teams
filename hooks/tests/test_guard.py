@@ -304,6 +304,37 @@ class TestAgentMemory(GuardTestCase):
         self.assertAllowed(edit("src/app.py", "Edit", "dev-backend"))
         self.assertAllowed(edit("src/app.py", "Edit", "qa-tester"))
 
+    def test_blocks_writes_through_shell(self):
+        # Найдено на живом прогоне: инструмент Write у роли заблокирован, а
+        # `cat > файл` пишет тот же файл мимо проверки. Платформа после
+        # блокировки Write сама предлагает агенту перейти на Bash.
+        for command, agent in [
+            ("cat > CHANGELOG.md <<EOF\ntext\nEOF", "devops"),
+            ("echo x > VERSION", "devops"),
+            ("touch newfile.txt", "local-sysops"),
+            ("cp src/a.py src/b.py", "code-reviewer"),
+            ("sed -i s/a/b/ src/app.py", "pm-orchestrator"),
+            ("rm src/app.js", "browser-tester"),
+        ]:
+            with self.subTest(agent=agent, command=command):
+                self.assertBlocked(bash(command, agent), agent)
+
+    def test_shell_writes_inside_own_zone_pass(self):
+        for command, agent in [
+            ("echo x > .claude/agent-memory/devops/MEMORY.md", "devops"),
+            ("echo x > ./.claude/agent-memory/devops/notes.md", "devops"),
+            ("echo x > .claude/agent-memory/code-reviewer/gotcha.md", "code-reviewer"),
+            ("echo x > tests/e2e/shot.png", "browser-tester"),
+            # Чтение и обычные команды роли не ограничены.
+            ("git status", "devops"),
+            ("cat CHANGELOG.md", "devops"),
+            ("python -m unittest discover", "devops"),
+            # Роль вне матрицы правило не трогает.
+            ("echo x > server/app.py", "dev-backend"),
+        ]:
+            with self.subTest(agent=agent, command=command):
+                self.assertAllowed(bash(command, agent))
+
     def test_ignores_main_thread(self):
         # Вне субагента поле agent_type отсутствует — правила ролей не применяются.
         self.assertAllowed(edit("src/app.py", "Edit"))
