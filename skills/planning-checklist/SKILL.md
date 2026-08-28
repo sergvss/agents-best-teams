@@ -1,6 +1,6 @@
 ---
 name: planning-checklist
-description: Декомпозиция задачи перед началом работы - определить Tier, разбить на подзадачи, назначить роли, задать критерии готовности. Использовать, когда задача больше одной правки, когда непонятно с чего начать, и всегда перед делегированием работы другим агентам.
+description: Task decomposition before work starts - determine the Tier, split into subtasks, assign roles, set done criteria. Use when a task is larger than a single edit, when it is unclear where to begin, and always before delegating work to other agents.
 ---
 
 # Чек-лист декомпозиции задачи

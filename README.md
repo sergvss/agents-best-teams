@@ -4,265 +4,254 @@
 
 <h1 align="center">agents-best-teams</h1>
 
-<p align="center"><em>«Один суперагент перестаёт справляться задолго до того, как ты успеваешь это заметить. Команда специализированных агентов с явными ролями, маршрутизацией и hooks вместо уговоров — масштабируется.»</em></p>
-
 <p align="center">
-  <strong>Русский</strong> · <a href="README.en.md">English</a>
+  <a href="README.md"><img alt="English" src="https://img.shields.io/badge/lang-en-blue.svg" /></a>
+  <a href="README.ru.md"><img alt="Русский" src="https://img.shields.io/badge/lang-ru-lightgrey.svg" /></a>
 </p>
 
+<p align="center"><em>"A single super-agent stops coping long before you notice. A team of specialised agents with explicit roles, routing and hooks instead of pleading — that scales."</em></p>
+
 <p align="center">
-  <a href="CHANGELOG.md"><img alt="Версия" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsergvss%2Fagents-best-teams%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue" /></a>
+  <a href="CHANGELOG.md"><img alt="Version" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsergvss%2Fagents-best-teams%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue" /></a>
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <img alt="Claude Code compatible" src="https://img.shields.io/badge/Claude_Code-plugin-9333ea" />
   <img alt="Codex compatible" src="https://img.shields.io/badge/Codex-compatible-10b981" />
   <img alt="Cursor compatible" src="https://img.shields.io/badge/Cursor-compatible-0ea5e9" />
-  <img alt="Язык содержимого: русский" src="https://img.shields.io/badge/content-RU-red" />
+  <img alt="Content language: Russian" src="https://img.shields.io/badge/content-RU-red" />
 </p>
 
 <p align="center">
-  <a href="#зачем">Зачем</a> ·
-  <a href="#установка">Установка</a> ·
-  <a href="#обновление">Обновление</a> ·
-  <a href="#что-внутри">Что внутри</a> ·
-  <a href="#когда-команда-нужна">Когда нужна</a> ·
-  <a href="#структура">Структура</a> ·
-  <a href="#принципы-одной-строкой">Принципы</a> ·
-  <a href="#два-языка">Два языка</a> ·
-  <a href="#благодарности">Благодарности</a>
+  <a href="#why">Why</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#updating">Updating</a> ·
+  <a href="#whats-inside">What's inside</a> ·
+  <a href="#when-you-need-a-team">When you need it</a> ·
+  <a href="#the-language-situation">Language</a> ·
+  <a href="#credits">Credits</a>
 </p>
 
 ---
 
-Методология построения **команды AI-агентов** для разработки программного обеспечения. Для тех, кто использует Claude Code, Codex, Cursor или любой другой agent-CLI и хочет перейти от «одного суперагента на всё» к специализированной команде с явными ролями, маршрутизацией и защитой от регрессий.
+A methodology for building a **team of AI agents** for software development. For people using Claude Code, Codex, Cursor or any other agent CLI who want to move from "one super-agent for everything" to a specialised team with explicit roles, routing, and protection against regressions.
+
+> **Read this before you install.** This README and the plugin's metadata are in English. Everything else — the principles, the role templates, the checklists, and the text a hook prints when it blocks something — is written in Russian. That is a deliberate boundary, not an oversight; [The language situation](#the-language-situation) explains exactly what still works for you and what does not.
 
 ---
 
-## Зачем
+## Why
 
-| Ситуация | Что берёшь |
+| Situation | What you take |
 |---|---|
-| Стартуешь проект и сразу хочешь команду ролей, а не одного агента | скилл `setup-agent-team` соберёт состав под твой стек |
-| Агентов уже десяток, каждый лезет в чужую зону | `principles/02` и шаблон оркестратора — маршрутизация по Tier |
-| Агент что-то снёс, и это не должно повториться | `hooks/` — рабочие защитные хуки, ставятся вместе с плагином |
-| Критичные правки уходят в прод «на глаз» | `principles/05` — три модели от разных вендоров, правило 2-из-3 |
-| Нужен аудит того, что уже настроено | `checklists/` — матрицы разрешений, контекста, планирования |
+| Starting a project and want a team of roles from day one, not a single agent | the `setup-agent-team` skill assembles a roster for your stack |
+| You already have a dozen agents, each wandering into someone else's area | `principles/02` and the orchestrator template — routing by Tier |
+| An agent destroyed something and it must not happen again | `hooks/` — working protective hooks, installed with the plugin |
+| Critical changes ship on gut feeling | `principles/05` — three models from different vendors, 2-of-3 rule |
+| You need an audit of what is already configured | `checklists/` — permission, context and planning matrices |
 
 ---
 
-## Установка
+## Install
 
 ```
 /plugin marketplace add sergvss/agents-best-teams
 /plugin install agents-best-teams@sergvss
 ```
 
-> **Не опечатка, что `sergvss` в двух строках значит разное.** В первой это **адрес репозитория** на GitHub, во второй — **имя маркетплейса**, заданное внутри него.
+> **It is not a typo that `sergvss` means two different things.** On the first line it is the **GitHub repository address**; on the second it is the **marketplace name** defined inside that repository.
 >
-> Если добавляешь маркетплейс через окно **Manage Plugins → Marketplaces → Add**, в поле нужен именно адрес: `sergvss/agents-best-teams`. Одно слово `sergvss` там даст ошибку `Invalid marketplace source format`.
+> If you add the marketplace through **Manage Plugins → Marketplaces → Add**, that field wants the address: `sergvss/agents-best-teams`. The bare word `sergvss` there produces `Invalid marketplace source format`.
 
-### Что включается когда
+### What turns on when
 
-Не всё начинает работать в момент установки — вот точная картина.
+Not everything starts working the moment you install. The precise picture:
 
-| | Когда | Что это |
+| | When | What it is |
 |---|---|---|
-| **Защитные хуки** | сразу | Блокируют деструктив ФС, force-push, запись в `.env`, SQL без `WHERE`; ведут журнал привилегированных действий и останавливают слепые повторы падающей команды |
-| **Чек-листы как скиллы** | сразу | Claude подтягивает их сам, когда они уместны, или вызывай через `/` |
-| **Предложение собрать команду** | со следующей сессии | Это хук на `SessionStart`, а событие уже прошло, если ставил посреди работы. `/reload-plugins` его не переигрывает |
-| **Роли команды** | только вручную | `setup-agent-team`, см. ниже |
-| **Stop-хук `verify.py`** | только вручную | Не в поставке по умолчанию: без команды тестов ему нечего запускать. Подключение — [hooks/README.md](hooks/README.md) |
-| **Триангуляция** | только вручную | Нужен `agents.config` и ключи внешних моделей — [docs/models.md](docs/models.md) |
+| **Protective hooks** | immediately | Block filesystem destruction, force-push, writes to `.env`, SQL without `WHERE`; log privileged actions and stop blind retries of a failing command |
+| **Checklists as skills** | immediately | Claude pulls them in when relevant, or invoke them with `/` |
+| **Team setup prompt** | next session | It is a `SessionStart` hook, and that event already fired if you installed mid-session. `/reload-plugins` does not replay it |
+| **Team roles** | manual only | `setup-agent-team`, see below |
+| **`verify.py` Stop hook** | manual only | Not shipped enabled: without a test command there is nothing for it to run. Wiring — [hooks/README.md](hooks/README.md) |
+| **Triangulation** | manual only | Needs `agents.config` and external model keys — [docs/models.md](docs/models.md) |
 
-**Сначала активация.** После установки Claude Code пишет либо `Plugin is now active.`, либо `Run /reload-plugins to activate.` Во втором случае до выполнения этой команды не работает ничего.
+**Activation comes first.** After installing, Claude Code prints either `Plugin is now active.` or `Run /reload-plugins to activate.` In the second case nothing works until you run that command.
 
-**На macOS и Linux хуки скорее всего промолчат.** В конфигурации указан `python`, а там бинарник называется `python3` — хук не запустится, и это не видно без проверки. Лечится одной строкой, см. [hooks/README.md](hooks/README.md#требования).
+**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. One line fixes it, see [hooks/README.md](hooks/README.md).
 
-### Команду ролей нужно развернуть отдельно
+### The roles need a separate step
 
-Хуки и скиллы работают сразу, а вот **роли плагин намеренно не ставит**: в шаблонах плейсхолдеры под конкретный проект, и роли с `<your-project>` внутри были бы хуже, чем их отсутствие. К тому же файлы плагина перезаписываются при обновлении — твои правки в ролях пропадали бы.
+Hooks and skills work immediately, but **the plugin deliberately does not install the roles**: the templates carry placeholders for a specific project, and roles with `<your-project>` inside them would be worse than no roles at all. Plugin files are also overwritten on update, so your edits to the roles would keep disappearing.
 
-При первом запуске в проекте без команды Claude сам предложит её собрать. Если ждать не хочется — скопируй эту строку в чат:
+On the first session in a project without a team, Claude offers to assemble one. If you would rather not wait, paste this into the chat:
 
 ```
 Разверни команду агентов в этом проекте через скилл agents-best-teams:setup-agent-team
 ```
 
-Скилл прочитает стек, предложит состав ролей, скопирует шаблоны и адаптирует их под проект. Отключить предложение навсегда: создать пустой файл `.claude/.no-team-setup-prompt`.
+The skill reads your stack, proposes a roster, copies the templates and adapts them to the project. To silence the offer permanently, create an empty `.claude/.no-team-setup-prompt` file.
 
-> **Проверь, что хуки работают:** попроси агента выполнить `echo проверка > .env.check`. Команда должна быть заблокирована с объяснением. Если вместо этого появился файл — хуки не подключились, смотри [hooks/README.md](hooks/README.md#проверь-что-защита-встала--это-обязательный-шаг).
+> **Check that the hooks actually work:** ask the agent to run `echo check > .env.check`. It must be blocked, with an explanation. If the file appears instead, the hooks are not wired up — see [hooks/README.md](hooks/README.md).
 >
-> Проверять защиту опасной командой вроде `rm -rf .` нельзя: если хук не работает — а именно это ты и проверяешь, — она выполнится.
+> Do not test the protection with something genuinely destructive like `rm -rf .`: if the hook is not working — which is the very thing you are testing — the command runs.
 
-**Другие платформы и ручная установка** — [docs/install.md](docs/install.md).
-**Первый запуск шаг за шагом** — [docs/quick-start.md](docs/quick-start.md).
-**Настройка моделей для триангуляции** — [docs/models.md](docs/models.md).
-**Субагенты, agent teams и workflows: что выбрать** — [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).
-**Как проверить, что всё это работает** — [docs/verification.md](docs/verification.md).
+**Other platforms and manual installation** — [docs/install.md](docs/install.md).
+**First run, step by step** — [docs/quick-start.md](docs/quick-start.md).
+**Subagents, agent teams and workflows: which to pick** — [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).
 
-> **Про название.** «Команда агентов» здесь — способ организации работы: роли, зоны, маршрутизация. В Claude Code есть функция с похожим именем, **agent teams**, и это другое: один из четырёх механизмов запуска. Роли из `templates/` работают со всеми, но часть полей у тиммейтов не применяется — разбор в [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).
+> **About the name.** "Agent team" here means a way of organising work: roles, areas, routing. Claude Code has a feature with a similar name, **agent teams**, and it is a different thing — one of four execution mechanisms. The `templates/` roles work with all of them, but some frontmatter fields are ignored for teammates.
 
 ---
 
-## Обновление
+## Updating
 
 ```
 /plugin marketplace update sergvss
 /reload-plugins
 ```
 
-Две вещи, из-за которых обновление «не приходит», хотя всё сделано правильно:
+Two reasons an update "does not arrive" even though you did everything right:
 
-- **Сторонние маркетплейсы не обновляются сами.** Автообновление по умолчанию включено только у официальных маркетплейсов Anthropic. Включить: `/plugin` → вкладка **Marketplaces** → `sergvss` → **Enable auto-update**.
-- **Новая версия видна только после подъёма `version` в манифесте.** Если автор залил изменения, не подняв версию, до установленных плагинов они не доедут.
+- **Third-party marketplaces do not update themselves.** Auto-update is on by default only for Anthropic official marketplaces. Turn it on: `/plugin` → **Marketplaces** tab → `sergvss` → **Enable auto-update**.
+- **A new version is only visible once `version` is bumped in the manifest.** If the author pushed changes without bumping it, they never reach installed plugins.
 
-### При ручном обновлении не перезаписывать
+### Never overwrite these on a manual update
 
-| Никогда | Почему |
+| Never | Why |
 |---|---|
-| `.claude/agent-memory/` | Накопленное знание ролей, восстановлению не подлежит |
-| `.claude/approval-log.jsonl` | Журнал привилегированных действий |
-| `.claude/settings.json` | Твои настройки — новые блоки хуков переносить руками |
-| `.claude/agents/` | Роли адаптированы под твой проект |
+| `.claude/agent-memory/` | Accumulated knowledge of your roles; not recoverable |
+| `.claude/approval-log.jsonl` | The privileged-action log |
+| `.claude/settings.json` | Your settings — port new hook blocks in by hand |
+| `.claude/agents/` | The roles are adapted to your project |
 
-Обновлять можно `hooks/*.py` и `skills/` — в них нет твоей специфики.
+`hooks/*.py` and `skills/` are safe to overwrite — they contain nothing specific to you.
 
-С последней строкой таблицы неудобно, и это честно: слить изменения шаблона с уже адаптированной ролью может только человек. Совет — закоммитить `.claude/` сразу после установки: тогда видно, что правил ты, а что осталось шаблонным.
+That last table row is genuinely awkward, and it is honest to say so: merging template changes into an already-adapted role is a job only a human can do. Advice — commit `.claude/` right after installing, so it stays visible which parts you changed and which are still stock.
 
-**Подробно, включая путь для тех, кто ставил до 1.0.0** — [docs/update.md](docs/update.md).
-
----
-
-## Что внутри
-
-Методология фокусируется на **командной работе** агентов, а не на одиночных:
-
-- **Tier-декомпозиция задач** — pipeline зависит от размера задачи, а не наоборот
-- **Изоляция зон ответственности** — каждый агент знает свою зону и не лезет в чужую
-- **Триангулированное ревью** — критичные решения проверяют 3 модели от разных вендоров, правило 2-из-3 = блокер
-- **Persistent memory per-agent** — институциональное знание накапливается между сессиями
-- **Human-in-the-loop** для привилегированных операций
-- **Eval-suite** для агентного слоя — те же тесты, что для продуктового кода
-- **Механические инварианты** — повторяющаяся ошибка становится кодом, а не новой строкой в промпте
-- **Недоверенный ввод** — текст из тикетов, страниц и ответов API это данные, а не инструкции
-
-Механические инварианты здесь не обещание, а работающий код: `hooks/` покрыты тестами, и половина из них проверяет **отсутствие** ложных срабатываний. Хук, который мешает работать, отключают в первый же день — и защиты не остаётся вовсе.
-
-Каждый принцип разобран на примере «плохо → хорошо» в [EXAMPLES.md](EXAMPLES.md).
+**In detail, including the path for anyone who installed before 1.0.0** — [docs/update.md](docs/update.md).
 
 ---
 
-## Когда команда нужна
+## What's inside
 
-**Нужна**, если:
-- В проекте 5+ ролей: backend, frontend, QA, DevOps, документация
-- Есть критичные зоны с разными правами (прод, биллинг, RBAC)
-- Агент регулярно «залезает» в чужую зону и ломает что-то
-- Хочется параллельного выполнения независимых задач
+The methodology is about agents working **as a team**, not about single agents:
 
-**Не нужна**, если:
-- Pet-project на одного разработчика
-- Задачи однородные (только backend или только frontend)
-- Нет времени настраивать — один опытный агент быстрее
+- **Tier decomposition** — the pipeline follows the size of the task, not the other way round
+- **Isolated areas of responsibility** — every agent knows its area and stays out of the others
+- **Triangulated review** — critical decisions are checked by 3 models from different vendors; 2-of-3 means blocker
+- **Per-agent persistent memory** — institutional knowledge accumulates between sessions
+- **Human in the loop** for privileged operations
+- **An eval suite** for the agent layer — the same testing discipline as for product code
+- **Mechanical invariants** — a recurring mistake becomes code, not another line of prompt
+- **Untrusted input** — text from tickets, pages and API responses is data, not instructions
+
+Mechanical invariants here are working code rather than a promise: `hooks/` are covered by tests, and half of those tests check for the **absence** of false positives. A hook that gets in the way is switched off on day one — and then there is no protection at all.
 
 ---
 
-## Структура
+## When you need a team
+
+**You do**, if:
+- The project has 5+ roles: backend, frontend, QA, DevOps, documentation
+- There are critical areas with different rights (production, billing, RBAC)
+- Agents keep wandering into each other's areas and breaking things
+- You want independent tasks to run in parallel
+
+**You do not**, if:
+- It is a one-developer pet project
+- The tasks are homogeneous (backend only, or frontend only)
+- There is no time to set it up — one capable agent is faster
+
+---
+
+## Structure
 
 ```
-principles/    11 принципов: философия, Tier-декомпозиция, классы риска,
-               бюджеты и кэширование, триангуляция, память, stop rules,
-               approval log, механические инварианты, eval-suite,
-               недоверенный ввод
+principles/    11 principles: philosophy, Tier decomposition, risk classes,
+               budgets and caching, triangulation, memory, stop rules,
+               approval log, mechanical invariants, eval suite,
+               untrusted input
 
-templates/     20 шаблонов ролей
-               делают: backend, frontend, database, QA, DevOps,
-                       документация, мультиязычность, локальный sysops
-               смотрят: ревьюер кода, безопасность, интерфейс,
-                       расследователь, вызов скоупу
-               считают: стоимость эксплуатации, юнит-экономика,
-                       инвестиционная отчётность, подписки и лицензии
-               прочее: оркестратор, браузерный тестировщик,
-                       внешний LLM-ревьюер
+templates/     20 role templates
+               they build:  backend, frontend, database, QA, DevOps,
+                            documentation, i18n, local sysops
+               they look:   code reviewer, security, design,
+                            investigator, scope challenger
+               they count:  running cost, unit economics,
+                            investor reporting, subscriptions and licences
+               other:       orchestrator, browser tester,
+                            external LLM reviewer
 
-checklists/    5 чек-листов: инструменты, разрешения, контекст,
-               планирование, путь от задачи до коммита
+checklists/    5 checklists: tools, permissions, context,
+               planning, the path from task to commit
 
-hooks/         Рабочие защитные хуки — слой Claude Code
-               guard.py — блокировка деструктива до выполнения
-               verify.py — не завершать работу с падающими тестами
-               approval_log.py — журнал привилегированных действий
-               retry_guard.py — правило трёх попыток
-               конфигурации и тесты
+hooks/         Working protective hooks — the Claude Code layer
+               guard.py — blocks destruction before it runs
+               verify.py — do not finish with failing tests
+               approval_log.py — privileged-action log
+               retry_guard.py — the three-attempts rule
+               configuration and tests
 
-skills/        Чек-листы как вызываемые скиллы + сборка команды под проект
+skills/        Checklists as invocable skills + team assembly for a project
 
-docs/          Установка, обновление, настройка моделей, первый запуск,
-               выбор механизма запуска, проверка работоспособности
+docs/          Install, update, model configuration, first run,
+               choosing an execution mechanism, verification
 
-.claude-plugin/  Манифесты плагина и маркетплейса
-
-EXAMPLES.md    Каждый принцип в виде «плохо → хорошо»
-CHANGELOG.md   История изменений
-VERSION        Текущая версия, сверяется с манифестом в CI
+.claude-plugin/  Plugin and marketplace manifests
 ```
 
-> К Claude Code привязаны только `hooks/`, `skills/` и `.claude-plugin/`. Всё остальное провайдер-нейтрально; эквиваленты для других платформ описаны в [hooks/README.md](hooks/README.md#другие-платформы).
+> Only `hooks/`, `skills/` and `.claude-plugin/` are tied to Claude Code. Everything else is provider-neutral.
 
 ---
 
-## Принципы одной строкой
+## The principles in one line each
 
-1. **Команда агентов > суперагент** — специализация снижает ошибки зон ответственности
-2. **Tier-декомпозиция** — размер задачи определяет pipeline, не наоборот
-3. **R/D/W/P классы риска** — подтверждение только там, где оно нужно
-4. **Бюджеты и кэширование** — чекпоинт после N шагов; стабильное в начало промпта, изменчивое в конец
-5. **Триангуляция** — критичные решения проверяют 3 модели параллельно
-6. **Persistent memory** — институциональное знание агента между сессиями
-7. **Stop rules** — агент знает когда остановиться, не застревает в петлях
-8. **Approval log** — привилегированные действия оставляют след
-9. **Mechanical invariants** — повторяющиеся ошибки → hooks, не уговоры
-10. **Eval-suite** — агентный слой тестируется так же, как продуктовый код
-11. **Недоверенный ввод** — внешний текст это данные, а не инструкции
-
----
-
-## Два языка
-
-Английская версия README живёт рядом: [README.en.md](README.en.md), переключатель в шапке обоих файлов.
-
-**Почему именно так.** GitHub показывает только `README.md` и не умеет выбирать язык по локали посетителя — никакой автоматики тут нет вообще. Единственный работающий способ — второй файл и явная ссылка между ними. Отсюда и правило сопровождения: русский README канонический, английский может отставать на выпуск. Версия в бейджах у обоих общая, потому что читается из одного манифеста.
-
-**Переводится не всё, и это осознанно.** У содержимого три слоя, и цена перевода у них разная:
-
-| Слой | Язык | Почему так |
-|---|---|---|
-| README | RU + EN | Витрина: по ней решают, брать или нет. Дублировать дёшево |
-| Принципы, шаблоны, чек-листы, `docs/` | RU | ~5600 строк прозы, меняется каждый выпуск |
-| Сообщения хуков | RU | Строки в коде, каталога сообщений нет |
-
-**А работать-то оно на английском будет?** Механически да, и это не догадка про модель, а свойство слоёв. Роли и скиллы — это промпты: модель читает русское определение роли и отвечает на языке собеседника. Хуки — обычный Python, им язык безразличен.
-
-**Где упрётся.** Когда хук блокирует действие, причина и предложенные альтернативы приходят по-русски. Читать их машинным переводом придётся ровно в тот момент, когда что-то пошло не так, — худший момент для этого.
-
-**Почему не перевести всё.** Вторая копия начнёт расходиться с первой, а шаблон роли, который тихо противоречит русскому оригиналу, опаснее отсутствующего: по нему работают, не имея возможности сверить. Переводу нужен сопровождающий, а не разовый проход. Первый по-настоящему полезный шаг — каталог сообщений для хуков: он маленький, а закрывает единственное место, где язык мешает работать.
+1. **A team beats a super-agent** — specialisation reduces area-of-responsibility errors
+2. **Tier decomposition** — task size determines the pipeline, not the reverse
+3. **R/D/W/P risk classes** — confirmation only where it is actually needed
+4. **Budgets and caching** — checkpoint after N steps; stable content first in the prompt, volatile content last
+5. **Triangulation** — critical decisions are reviewed by 3 models in parallel
+6. **Persistent memory** — an agent's institutional knowledge between sessions
+7. **Stop rules** — the agent knows when to stop and does not get stuck in loops
+8. **Approval log** — privileged actions leave a trace
+9. **Mechanical invariants** — recurring mistakes become hooks, not pleading
+10. **Eval suite** — the agent layer is tested like product code
+11. **Untrusted input** — external text is data, not instructions
 
 ---
 
-## Лицензия
+## The language situation
 
-MIT — см. [`LICENSE`](LICENSE).
+Worth being precise about, because "the docs are in Russian" and "you cannot use it" are not the same statement.
+
+**What is in English:** this README and the plugin's own metadata — the description you see in `/plugin` and in the marketplace, plus the one-line description of every skill shown in `/help`. Ten strings in total, kept in English because they are what people read before they can decide anything.
+
+**What is in Russian:** the 11 principles, the 20 role templates, the 5 checklists, the bodies of the skills, everything under `docs/`, the text the hooks print when they block something, and the Russian README at [README.ru.md](README.ru.md).
+
+**Does the plugin still work for you?** Mechanically, yes. The roles and skills are prompts the model reads, and the model is multilingual: it reads a Russian role definition and answers you in the language you write in. The protective hooks are Python — they do not care what language anyone speaks.
+
+**Where it will bite.** When a hook blocks an action, the explanation and the suggested alternatives arrive in Russian. Those strings live in the hook source, not in a message catalogue, so no setting switches them. You would be reading machine translation at exactly the moment something went wrong — the worst possible moment for it.
+
+**Why it is not all translated.** 6,031 lines of prose that changes every release. A second copy would drift from the first, and a role template that quietly disagrees with its Russian original is more dangerous than a missing one — you would be running rules you cannot verify. A translation needs a maintainer who keeps it honest, not a one-off pass.
+
+If you want to use this in English and are willing to co-maintain the translation, open an issue. A message catalogue for the hooks is the highest-value first step, and it is a small one.
 
 ---
 
-## Благодарности
+## License
 
-Эта методология выросла из практики построения команды агентов в реальных продуктовых проектах. Толчком и источником вдохновения стал репозиторий [DenisSergeevitch/agents-best-practices](https://github.com/DenisSergeevitch/agents-best-practices) — спасибо автору за то, что собрал и сформулировал базовые принципы работы с агентами в одном месте. Часть концепций (классы риска, чек-листы инструментов и разрешений, идея mechanical invariants) развита здесь применительно к **команде** агентов.
-
-Освоены и интегрированы практики ещё двух источников:
-
-- **[garrytan/gstack](https://github.com/garrytan/gstack)** — набор Гарри Тана (Y Combinator) для Claude Code как виртуальной инженерной команды. Подход «структурированный спринт Think → Plan → Build → Review → Test → Ship → Reflect» и идея параллельных независимых пайплайнов лежат в основе нашего `pm-orchestrator` и Tier-декомпозиции.
-- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — коллекция дисциплинарных skill'ов по наблюдениям Андрея Карпатого о типичных ошибках LLM при кодировании. Принципы **Think Before Coding**, **Simplicity First**, **Surgical Changes** и **Goal-Driven Execution** встроены в методологию напрямую.
+MIT — see [`LICENSE`](LICENSE).
 
 ---
 
-<p align="center"><em>Если применяешь методологию и нашёл что улучшить — PR приветствуется.</em></p>
+## Credits
+
+This methodology grew out of building agent teams in real product projects. The push and the original inspiration came from [DenisSergeevitch/agents-best-practices](https://github.com/DenisSergeevitch/agents-best-practices) — thanks to its author for collecting and articulating the base principles of working with agents in one place. Several concepts (risk classes, tool and permission checklists, the mechanical-invariants idea) are developed here for the case of a **team** of agents.
+
+Practices from two more sources are absorbed and integrated:
+
+- **[garrytan/gstack](https://github.com/garrytan/gstack)** — Garry Tan's (Y Combinator) kit for Claude Code as a virtual engineering team. The structured Think → Plan → Build → Review → Test → Ship → Reflect sprint, and the idea of parallel independent pipelines, underpin our `pm-orchestrator` and Tier decomposition.
+- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — a collection of disciplinary skills based on Andrej Karpathy's observations about typical LLM coding failures. The **Think Before Coding**, **Simplicity First**, **Surgical Changes** and **Goal-Driven Execution** principles are built into the methodology directly.
+
+---
+
+<p align="center"><em>If you use the methodology and find something to improve — PRs welcome.</em></p>

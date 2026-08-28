@@ -1,6 +1,6 @@
 ---
 name: tool-checklist
-description: Проверка перед вызовом инструмента - нужен ли он вообще, тот ли выбран, каков объём вывода и класс риска. Использовать перед Bash с деструктивным потенциалом, перед массовыми правками, перед запросами к БД и всегда, когда вывод инструмента может оказаться огромным.
+description: Check before calling a tool - is it needed at all, is it the right one, how large is the output, what is the risk class. Use before Bash with destructive potential, before bulk edits, before database queries, and whenever a tool's output could turn out to be enormous.
 ---
 
 # Чек-лист вызова инструмента

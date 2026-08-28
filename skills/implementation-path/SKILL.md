@@ -1,6 +1,6 @@
 ---
 name: implementation-path
-description: Путь от задачи до коммита - последовательность шагов реализации с проверкой на каждом. Использовать при выполнении задачи уровня Tier 2 и выше, когда нужно довести работу до проверенного и зафиксированного результата, а не просто написать код.
+description: The path from task to commit - the sequence of implementation steps with a check at each one. Use when carrying out a task of Tier 2 or above, where the work must reach a verified and committed result rather than just written code.
 ---
 
 # Путь от задачи до коммита
