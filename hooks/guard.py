@@ -73,6 +73,11 @@ MEMORY_MATRIX = {
     "investigator": WRITE_TOOLS,
     "design-reviewer": WRITE_TOOLS,
     "scope-challenger": WRITE_TOOLS,
+    # Финансовые роли: тоже смотрят и считают, ничего не правят.
+    "finops-engineer": WRITE_TOOLS,
+    "unit-economics-analyst": WRITE_TOOLS,
+    "investment-analyst": WRITE_TOOLS,
+    "vendor-auditor": WRITE_TOOLS,
     # browser-tester пишет тест-артефакты: Write ограничен зоной tests/ ниже,
     # а Edit продуктового кода ему не положен вовсе.
     "browser-tester": {"Edit", "MultiEdit", "Write"},

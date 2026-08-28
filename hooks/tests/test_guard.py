@@ -275,12 +275,18 @@ class TestAgentMemory(GuardTestCase):
             ("newfile.txt", "Write", "local-sysops"),
             ("src/app.js", "Edit", "browser-tester"),
             ("src/app.js", "Write", "browser-tester"),
+            ("report.md", "Write", "finops-engineer"),
+            ("src/app.py", "Edit", "unit-economics-analyst"),
+            ("metrics.md", "Write", "investment-analyst"),
+            ("package.json", "Edit", "vendor-auditor"),
         ]:
             with self.subTest(agent=agent, tool=tool, path=path):
                 self.assertBlocked(edit(path, tool, agent), agent)
 
     def test_allows_own_memory_directory(self):
-        for agent in ["code-reviewer", "pm-orchestrator", "devops", "local-sysops", "browser-tester"]:
+        for agent in ["code-reviewer", "pm-orchestrator", "devops", "local-sysops", "browser-tester",
+                      "finops-engineer", "unit-economics-analyst", "investment-analyst",
+                      "vendor-auditor"]:
             path = ".claude/agent-memory/{}/MEMORY.md".format(agent)
             with self.subTest(agent=agent):
                 self.assertAllowed(edit(path, "Write", agent))
@@ -634,6 +640,37 @@ class TestMatrixMatchesDocs(unittest.TestCase):
                 # Роль под правилом хука обязана иметь включённую память,
                 # иначе правило охраняет то, чего нет.
                 self.assertIn("memory: project", head, "у роли " + agent + " не включена память")
+
+    def test_every_read_only_template_with_memory_is_in_matrix(self):
+        """Обратная сверка: шаблон → матрица.
+
+        Поле memory включает Read/Write/Edit в обход списка tools. Роль без
+        Edit/Write в tools, но с памятью и без записи в матрице, молча получает
+        право писать куда угодно — ровно та дыра, ради которой правило и есть.
+        Проверка обратного направления нужна потому, что забыть строку в
+        матрице при добавлении роли не мешает ничему и никак не проявляется.
+        """
+        templates = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, "templates",
+        )
+        for name in sorted(os.listdir(templates)):
+            if not name.endswith(".md"):
+                continue
+            with open(os.path.join(templates, name), encoding="utf-8") as fh:
+                head = fh.read().split("\n---", 2)[0]
+            if "memory: project" not in head:
+                continue
+            tools = re.search(r"^tools:(.*)$", head, re.M)
+            tools = tools.group(1) if tools else ""
+            if "Edit" in tools or "Write" in tools:
+                continue  # роли с правом записи по списку tools правило не ограничивает
+            agent = name[: -len(".md")]
+            with self.subTest(agent=agent):
+                self.assertIn(
+                    agent, self.matrix,
+                    "роль " + agent + " читающая, но с памятью — её нет в MEMORY_MATRIX, "
+                    "поле memory выдаст ей Write/Edit в обход tools",
+                )
 
 
 if __name__ == "__main__":

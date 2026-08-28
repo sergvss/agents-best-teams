@@ -170,11 +170,13 @@ principles/    11 principles: philosophy, Tier decomposition, risk classes,
                approval log, mechanical invariants, eval suite,
                untrusted input
 
-templates/     16 role templates
+templates/     20 role templates
                they build:  backend, frontend, database, QA, DevOps,
                             documentation, i18n, local sysops
                they look:   code reviewer, security, design,
                             investigator, scope challenger
+               they count:  running cost, unit economics,
+                            investor reporting, subscriptions and licences
                other:       orchestrator, browser tester,
                             external LLM reviewer
 
@@ -222,7 +224,7 @@ Worth being precise about, because "the docs are in Russian" and "you cannot use
 
 **What is in English:** this README, and nothing else.
 
-**What is in Russian:** the 11 principles, the 16 role templates, the 5 checklists, the skills, everything under `docs/`, and the text the hooks print when they block something.
+**What is in Russian:** the 11 principles, the 20 role templates, the 5 checklists, the skills, everything under `docs/`, and the text the hooks print when they block something.
 
 **Does the plugin still work for you?** Mechanically, yes. The roles and skills are prompts the model reads, and the model is multilingual: it reads a Russian role definition and answers you in the language you write in. The protective hooks are Python — they do not care what language anyone speaks.
 
