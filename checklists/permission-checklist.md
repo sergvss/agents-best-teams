@@ -29,10 +29,15 @@
 | local-sysops | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — |
 | docs-writer | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
 | i18n-keeper | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| security-reviewer | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
+| investigator | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
+| design-reviewer | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
+| scope-challenger | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
 | external-llm-reviewer | — | — | — | ✓ | — | — | — | — |
 
 **Ключевые ограничения по умолчанию:**
 - `pm-orchestrator` и `code-reviewer` — без Edit/Write (не пишут код, физически не могут)
+- **Роли-аналитики** — `security-reviewer`, `investigator`, `design-reviewer`, `scope-challenger` — тоже без Edit/Write. Они смотрят, ставят диагноз и передают профильной роли. `investigator` не пишет даже тест на воспроизведение: условия он описывает, тест пишет `qa-tester`
 - `devops` и `local-sysops` — без Write (только Edit существующих файлов, не создают новые без согласования)
 - `browser-tester` — Write только для тест-артефактов (`tests/e2e/screenshots/`, `tests/e2e/specs/`); Edit не нужен (продуктовый код не правит)
 - `external-llm-reviewer` — только Bash (вызов CLI-обёртки над внешним LLM API), ничего не пишет в репозиторий — отчёт возвращает в stdout
@@ -56,6 +61,10 @@
 | local-sysops | default | 15 | low | project + хук |
 | docs-writer | acceptEdits | 20 | low | project |
 | i18n-keeper | acceptEdits | 25 | low | project |
+| security-reviewer | default | 25 | high | project + хук |
+| investigator | default | 30 | high | project + хук |
+| design-reviewer | default | 20 | medium | project + хук |
+| scope-challenger | default | 15 | high | project + хук |
 | external-llm-reviewer | — | — | — | — |
 
 Что означает каждая колонка:
@@ -99,12 +108,16 @@
 
 Для агента, у которого Write и Edit и так есть, это ничего не меняет. Для агента, у которого их нет **намеренно**, это тихо ломает главную гарантию роли. Включив `memory: project` у `code-reviewer`, ты получаешь ревьюера, который может править код — ровно то, что вся конструкция роли исключает.
 
-Затронуты пять агентов из одиннадцати:
+Затронуты девять агентов из пятнадцати:
 
 | Агент | Чего лишён по матрице | Что выдаёт memory |
 |---|---|---|
 | pm-orchestrator | Edit, Write | Edit, Write |
 | code-reviewer | Edit, Write | Edit, Write |
+| security-reviewer | Edit, Write | Edit, Write |
+| investigator | Edit, Write | Edit, Write |
+| design-reviewer | Edit, Write | Edit, Write |
+| scope-challenger | Edit, Write | Edit, Write |
 | browser-tester | Edit | Edit |
 | devops | Write | Write |
 | local-sysops | Write | Write |

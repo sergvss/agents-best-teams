@@ -33,6 +33,7 @@ ROLE_NAMES = {
     "pm-orchestrator", "code-reviewer", "dev-backend", "dev-frontend",
     "dev-database", "qa-tester", "browser-tester", "devops",
     "docs-writer", "i18n-keeper", "local-sysops",
+    "security-reviewer", "investigator", "design-reviewer", "scope-challenger",
 }
 
 MESSAGE = """Плагин agents-best-teams установлен, но команда ролей в этом проекте ещё не развёрнута: в `.claude/agents/` нет ни одной роли методологии.

@@ -67,6 +67,12 @@ ENV_ALLOWED = {".env.example", ".env.sample", ".env.template", ".env.dist"}
 MEMORY_MATRIX = {
     "pm-orchestrator": WRITE_TOOLS,
     "code-reviewer": WRITE_TOOLS,
+    # Роли-аналитики: смотрят и ставят диагноз, но не правят. Память им нужна,
+    # поэтому поле memory включено — и поэтому же нужен этот возврат ограничений.
+    "security-reviewer": WRITE_TOOLS,
+    "investigator": WRITE_TOOLS,
+    "design-reviewer": WRITE_TOOLS,
+    "scope-challenger": WRITE_TOOLS,
     # browser-tester пишет тест-артефакты: Write ограничен зоной tests/ ниже,
     # а Edit продуктового кода ему не положен вовсе.
     "browser-tester": {"Edit", "MultiEdit", "Write"},

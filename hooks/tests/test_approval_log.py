@@ -64,6 +64,7 @@ class TestWhatGetsLogged(ApprovalLogTestCase):
             ("cat .env", "P"),
         ]:
             with self.subTest(command=command):
+                self.tearDown()   # иначе прошлый временный каталог течёт
                 self.setUp()
                 found = self.log("Bash", {"command": command})
                 self.assertEqual(len(found), 1, "действие не попало в журнал: " + command)
@@ -79,6 +80,7 @@ class TestWhatGetsLogged(ApprovalLogTestCase):
         found = self.log("Bash", {"command": "git commit -m x"}, agent="devops")
         self.assertEqual(found[0]["agent"], "devops")
         # Пустая роль означает главный поток, а не потерянные данные.
+        self.tearDown()
         self.setUp()
         found = self.log("Bash", {"command": "git commit -m x"})
         self.assertEqual(found[0]["agent"], "")
@@ -92,12 +94,14 @@ class TestWhatStaysOut(ApprovalLogTestCase):
             "python -m unittest discover", "grep -rn TODO src/", "npm test",
         ]:
             with self.subTest(command=command):
+                self.tearDown()   # иначе прошлый временный каталог течёт
                 self.setUp()
                 self.assertEqual(self.log("Bash", {"command": command}), [])
 
     def test_ordinary_file_edits_stay_out(self):
         for path in ["src/app.py", "README.md", "client/game/step.js"]:
             with self.subTest(path=path):
+                self.tearDown()
                 self.setUp()
                 self.assertEqual(self.log("Edit", {"file_path": path}), [])
 
