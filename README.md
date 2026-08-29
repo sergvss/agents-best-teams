@@ -107,6 +107,7 @@ The skill reads your stack, proposes a roster, copies the templates and adapts t
 >
 > Do not test the protection with something genuinely destructive like `rm -rf .`: if the hook is not working — which is the very thing you are testing — the command runs.
 
+**The role catalogue — who does what** — [templates/README.md](templates/README.md).
 **The concepts you will meet — Tier, risk classes, 2-of-3, agent memory** — [docs/concepts.en.md](docs/concepts.en.md).
 **Other platforms and manual installation** — [docs/install.md](docs/install.md).
 **First run, step by step** — [docs/quick-start.md](docs/quick-start.md).
@@ -255,7 +256,7 @@ English is the default. If no language is chosen, the plugin asks once at the st
 
 **Does the rest still work for you?** Yes, and not by luck. The roles and skills are prompts the model reads, and the model is multilingual: it reads a Russian role definition and answers in the language you write in. When `setup-agent-team` deploys a team it can write the roles in your language as it adapts them to your stack — so the roles you actually work with are yours to read.
 
-**Why the prose is not translated.** 6,031 lines that change every release. A second copy would drift from the first, and a role template that quietly disagrees with its Russian original is more dangerous than a missing one — you would be running rules you cannot verify. That is also why role translation happens at deployment rather than in this repository: one canonical copy here, nothing to drift.
+**Why the prose is not translated.** Several thousand lines of it, changing every release. A second copy would drift from the first, and a role template that quietly disagrees with its Russian original is more dangerous than a missing one — you would be running rules you cannot verify. That is also why role translation happens at deployment rather than in this repository: one canonical copy here, nothing to drift.
 
 If you want to help maintain a fuller English version, open an issue.
 
