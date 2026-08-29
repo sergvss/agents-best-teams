@@ -16,6 +16,9 @@ import tempfile
 import unittest
 
 VERIFY = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "verify.py")
+
+# Язык сообщений закреплён явно, см. пояснение в test_guard.py.
+os.environ.setdefault("ABT_LANG", "en")
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir))
 
 PASSING = "{} -c \"import sys; sys.exit(0)\"".format(sys.executable)
@@ -73,7 +76,7 @@ class TestVerifyGate(unittest.TestCase):
     def test_failing_check_blocks_stop(self):
         code, err = run_verify(self.session("fail-1"), FAILING)
         self.assertEqual(code, 2, "падающая проверка обязана блокировать завершение")
-        self.assertIn("НЕ ЗАВЕРШЕНО", err)
+        self.assertIn("NOT FINISHED", err)
         # Вывод команды должен попасть агенту, иначе чинить нечего.
         self.assertIn("2 tests failed", err)
 
@@ -89,7 +92,7 @@ class TestVerifyGate(unittest.TestCase):
         self.assertEqual(codes[2:], [0, 0], "бесконечная блокировка заперла бы сессию")
         code, err = run_verify(session, FAILING, extra=["--max-blocks", "2"])
         self.assertEqual(code, 0)
-        self.assertIn("НЕ доведена", err)
+        self.assertIn("NOT finished", err)
 
     def test_success_resets_the_counter(self):
         session = self.session("reset")
@@ -116,15 +119,15 @@ class TestVerifyGate(unittest.TestCase):
         hang = "{} -c \"import time; time.sleep(30)\"".format(sys.executable)
         code, err = run_verify(self.session("hang"), hang, extra=["--timeout", "2"])
         self.assertEqual(code, 2, "таймаут обязан блокировать завершение")
-        self.assertIn("НЕ ЗАВЕРШЕНО", err)
-        self.assertIn("прервана", err)
+        self.assertIn("NOT FINISHED", err)
+        self.assertIn("interrupted", err)
 
     def test_bad_arguments_do_not_lock_the_session(self):
         # argparse по умолчанию выходит с кодом 2, а для Stop-хука это
         # «блокировать»: опечатка в конфигурации заперла бы сессию навсегда.
         code, err = run_verify(self.session("badargs"), PASSING, extra=["--max-blocks", "не-число"])
         self.assertEqual(code, 1, "ошибка конфигурации не должна блокировать завершение")
-        self.assertIn("аргумент", err.lower())
+        self.assertIn("argument", err.lower())
 
     def test_check_runs_by_default_on_clean_worktree(self):
         # Штатный процесс заканчивается коммитом, после которого дерево чистое.

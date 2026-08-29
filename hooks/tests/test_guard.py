@@ -15,11 +15,17 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 GUARD = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "guard.py")
+
+# Язык сообщений закреплён явно: иначе тесты сверяли бы текст с умолчанием,
+# и смена умолчания ломала бы их, ничего не сломав по существу.
+os.environ.setdefault("ABT_LANG", "en")
 
 
 def run_hook(payload, rules=None):
@@ -105,7 +111,7 @@ class TestFilesystem(GuardTestCase):
     def test_blocks_variable_in_target(self):
         for command in ['rm -rf "$BUILD_DIR/"', "rm -rf $HOME", "rm -rf %TEMP%"]:
             with self.subTest(command=command):
-                self.assertBlocked(bash(command), "переменную")
+                self.assertBlocked(bash(command), "variable")
 
     def test_allows_specific_paths(self):
         for command in [
@@ -365,7 +371,7 @@ class TestContract(GuardTestCase):
     def test_misconfiguration_fails_closed(self):
         # Опечатка и пустой список — два способа молча остаться без защиты.
         # Хук обязан отказать в обоих случаях, а не пропустить команду.
-        for rules, marker in [("fs,gti", "неизвестные правила"), ("", "пуст"), ("   ", "пуст")]:
+        for rules, marker in [("fs,gti", "do not exist"), ("", "empty"), ("   ", "empty")]:
             with self.subTest(rules=repr(rules)):
                 reason = run_hook(bash("ls -la"), rules=rules)
                 self.assertIsNotNone(reason, "конфигурация принята молча")
@@ -671,6 +677,112 @@ class TestMatrixMatchesDocs(unittest.TestCase):
                     "роль " + agent + " читающая, но с памятью — её нет в MEMORY_MATRIX, "
                     "поле memory выдаст ей Write/Edit в обход tools",
                 )
+
+
+class TestMessageCatalogue(unittest.TestCase):
+    """
+    Инвариант двуязычия. Каталог существует ровно затем, чтобы языки не
+    разошлись, — а разойтись они могут только одним способом: кто-то добавит
+    сообщение на одном языке и забудет про второй. Проверяем это, а не текст.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.normpath(os.path.dirname(GUARD)))
+        import messages  # noqa: E402
+        self.messages = messages
+
+    def test_every_key_exists_in_every_language(self):
+        for key, entry in self.messages.MESSAGES.items():
+            for language in self.messages.SUPPORTED:
+                with self.subTest(key=key, lang=language):
+                    self.assertIn(language, entry, "нет перевода на " + language)
+                    self.assertTrue(entry[language].strip(), "пустой текст")
+
+    def test_placeholders_match_between_languages(self):
+        # Разный набор подстановок — это TypeError в момент блокировки,
+        # то есть отказ защиты ровно тогда, когда она нужна.
+        for key, entry in self.messages.MESSAGES.items():
+            fields = {
+                language: set(re.findall(r"\{(\w+)\}", text))
+                for language, text in entry.items()
+            }
+            with self.subTest(key=key):
+                self.assertEqual(
+                    len(set(map(frozenset, fields.values()))), 1,
+                    "у ключа {} расходятся подстановки: {}".format(key, fields),
+                )
+
+    def test_hooks_use_only_existing_keys(self):
+        # Опечатка в ключе — KeyError вместо блокировки. Проверяем все хуки.
+        hooks_dir = os.path.normpath(os.path.dirname(GUARD))
+        used = set()
+        for name in os.listdir(hooks_dir):
+            if not name.endswith(".py") or name == "messages.py":
+                continue
+            with open(os.path.join(hooks_dir, name), encoding="utf-8") as fh:
+                used |= set(re.findall(r"msg\(\s*[\"']([\w.]+)[\"']", fh.read()))
+        self.assertTrue(used, "в хуках не найдено ни одного вызова msg()")
+        for key in sorted(used):
+            with self.subTest(key=key):
+                self.assertIn(key, self.messages.MESSAGES)
+
+    def test_language_switches_the_block_text(self):
+        env = dict(os.environ, ABT_LANG="ru")
+        proc = subprocess.run(
+            [sys.executable, "-X", "utf8", GUARD],
+            input=json.dumps(bash("rm -rf /")).encode("utf-8"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        )
+        russian = json.loads(proc.stdout.decode("utf-8"))["hookSpecificOutput"]["permissionDecisionReason"]
+        english = run_hook(bash("rm -rf /"))
+        self.assertIn("Причина блокировки", russian)
+        self.assertIn("Why this is blocked", english)
+        # Правило одно и то же на обоих языках: блокируется в любом случае.
+        self.assertIn("BLOCKED [P/Privileged]", russian)
+        self.assertIn("BLOCKED [P/Privileged]", english)
+
+    def test_project_file_selects_the_language(self):
+        # Файл в проекте — это то, что пишет setup-agent-team.
+        with tempfile.TemporaryDirectory() as project:
+            os.makedirs(os.path.join(project, ".claude"))
+            with open(os.path.join(project, ".claude", ".abt-lang"), "w", encoding="utf-8") as fh:
+                fh.write("ru\n")
+            payload = dict(bash("rm -rf /"), cwd=project)
+            env = {k: v for k, v in os.environ.items() if k != "ABT_LANG"}
+            proc = subprocess.run(
+                [sys.executable, "-X", "utf8", GUARD],
+                input=json.dumps(payload).encode("utf-8"),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+            )
+            reason = json.loads(proc.stdout.decode("utf-8"))["hookSpecificOutput"]["permissionDecisionReason"]
+            self.assertIn("Причина блокировки", reason)
+
+    def test_guard_and_messages_are_self_sufficient_together(self):
+        # Форма ручной установки: два файла в .claude/hooks/ и больше ничего.
+        # Забыть messages.py при копировании — значит получить хук, который
+        # не запускается вовсе; проверяем, что пары достаточно.
+        hooks_dir = os.path.normpath(os.path.dirname(GUARD))
+        with tempfile.TemporaryDirectory() as target:
+            for name in ("guard.py", "messages.py"):
+                shutil.copy(os.path.join(hooks_dir, name), target)
+            proc = subprocess.run(
+                [sys.executable, "-X", "utf8", os.path.join(target, "guard.py")],
+                input=json.dumps(bash("rm -rf /")).encode("utf-8"),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
+            self.assertIn("BLOCKED", proc.stdout.decode("utf-8"))
+
+    def test_unknown_language_falls_back_instead_of_failing(self):
+        env = dict(os.environ, ABT_LANG="de")
+        proc = subprocess.run(
+            [sys.executable, "-X", "utf8", GUARD],
+            input=json.dumps(bash("rm -rf /")).encode("utf-8"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        )
+        self.assertEqual(proc.returncode, 0)
+        reason = json.loads(proc.stdout.decode("utf-8"))["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("BLOCKED", reason, "незнакомый язык не должен снимать защиту")
 
 
 if __name__ == "__main__":

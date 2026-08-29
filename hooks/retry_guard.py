@@ -32,6 +32,9 @@ import sys
 import tempfile
 import time
 
+# Тексты для человека — в каталоге сообщений, см. messages.py.
+from messages import msg, use_project
+
 DEFAULT_LIMIT = 3
 STATE_TTL_S = 3600
 
@@ -118,6 +121,7 @@ def main():
 
     session = str(data.get("session_id") or "no-session")
     cwd = data.get("cwd") or os.getcwd()
+    use_project(cwd)
     path = state_path(session)
     state = load_state(path)
     key = command_key(command)
@@ -143,20 +147,11 @@ def main():
     state.pop(key, None)   # Блокируем один раз: решение принимает человек, а не счётчик.
     save_state(path, state)
 
-    reason = (
-        "STOP [правило 3 попыток]: эта команда уже падала {n} раза подряд, "
-        "и с прошлой попытки в рабочей копии ничего не изменилось.\n\n"
-        "Команда: {cmd}\n\n"
-        "Причина остановки: повтор без единой правки между попытками не даст "
-        "нового результата. Если три раза не сработало — дело не в случайности.\n\n"
-        "Что сделать вместо четвёртой попытки:\n"
-        "  1. Сообщить пользователю последнюю ошибку целиком и предложить 2-3 разных подхода\n"
-        "  2. Если менял что-то вне файлов — окружение, службу, внешний сервис — скажи "
-        "об этом прямо, тогда повтор осмыслен\n"
-        "  3. Сменить стратегию, а не флаги у той же команды\n\n"
-        "Следующий вызов этой команды блокировку не встретит: счётчик сброшен, "
-        "решение за тобой и пользователем."
-    ).format(n=entry.get("count", args.limit), cmd=re.sub(r"\s+", " ", command)[:200])
+    reason = msg(
+        "retry.blocked",
+        n=entry.get("count", args.limit),
+        cmd=re.sub(r"\s+", " ", command)[:200],
+    )
 
     sys.stdout.write(json.dumps({
         "hookSpecificOutput": {

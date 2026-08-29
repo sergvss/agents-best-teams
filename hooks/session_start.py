@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-session_start.py — SessionStart-хук: предложить развернуть команду ролей.
+session_start.py — SessionStart-хук: предложить развернуть команду ролей
+и выбрать язык сообщений, если он ещё не выбран.
 
 Плагин ставит хуки и скиллы, но не ставит роли: в шаблонах плейсхолдеры под
 конкретный проект, и подставить их может только человек или скилл сборки.
@@ -25,6 +26,9 @@ import os
 import re
 import sys
 
+# Тексты для человека — в каталоге сообщений, см. messages.py.
+from messages import LANG_FILE, SUPPORTED, msg, use_project
+
 # Файл-маркер: пользователь решил, что подсказка не нужна.
 OPT_OUT = os.path.join(".claude", ".no-team-setup-prompt")
 
@@ -38,14 +42,20 @@ ROLE_NAMES = {
     "vendor-auditor",
 }
 
-MESSAGE = """Плагин agents-best-teams установлен, но команда ролей в этом проекте ещё не развёрнута: в `.claude/agents/` нет ни одной роли методологии.
+def language_is_chosen(cwd):
+    """
+    True, если язык сообщений уже задан явно.
 
-Уже работает без настройки: защитные хуки и чек-листы как скиллы.
-Пока не работает: разделение работы по ролям с изолированными зонами.
-
-Предложи пользователю развернуть команду прямо сейчас — это скилл `setup-agent-team`: он прочитает стек проекта, предложит состав ролей, скопирует шаблоны и адаптирует их под проект. Займёт несколько минут и потребует пары решений от пользователя.
-
-Предложи это одной короткой фразой в конце своего первого ответа, не прерывая текущую задачу пользователя. Если он откажется или промолчит — больше не возвращайся к теме в этой сессии. Отключить подсказку насовсем: создать пустой файл `.claude/.no-team-setup-prompt`."""
+    Спрашивать нужно один раз: вопрос, который повторяется каждую сессию,
+    приучают игнорировать ровно так же, как и подсказку про сборку команды.
+    """
+    if (os.environ.get("ABT_LANG") or "").strip().lower()[:2] in SUPPORTED:
+        return True
+    try:
+        with open(os.path.join(cwd, LANG_FILE), encoding="utf-8") as fh:
+            return fh.read().strip().lower()[:2] in SUPPORTED
+    except OSError:
+        return False
 
 
 def team_is_set_up(cwd):
@@ -88,16 +98,27 @@ def main():
             return 0
 
     cwd = data.get("cwd") or os.getcwd()
+    use_project(cwd)
 
     if os.path.exists(os.path.join(cwd, OPT_OUT)):
         return 0
-    if team_is_set_up(cwd):
+
+    # Два повода заговорить, и оба одноразовые. Язык идёт первым: пока он не
+    # выбран, всё остальное человек читает на умолчании, которое ему могли
+    # и не подобрать.
+    parts = []
+    if not language_is_chosen(cwd):
+        parts.append(msg("session.language_prompt"))
+    if not team_is_set_up(cwd):
+        parts.append(msg("session.team_setup"))
+
+    if not parts:
         return 0
 
     sys.stdout.write(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": MESSAGE,
+            "additionalContext": "\n\n---\n\n".join(parts),
         }
     }, ensure_ascii=True))
     return 0

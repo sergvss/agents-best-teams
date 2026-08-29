@@ -21,8 +21,9 @@ cp -r templates/* "$PROJECT/.claude/agents/"
 # Чек-листы как скиллы
 cp -r skills/* "$PROJECT/.claude/skills/"
 
-# Защитные хуки
-cp hooks/guard.py "$PROJECT/.claude/hooks/"
+# Защитные хуки. Копировать вместе с messages.py: в нём весь текст
+# сообщений, и без него guard.py не запустится вовсе.
+cp hooks/guard.py hooks/messages.py "$PROJECT/.claude/hooks/"
 ```
 
 Конфигурацию хуков переноси вручную:

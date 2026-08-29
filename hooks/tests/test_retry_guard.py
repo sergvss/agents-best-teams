@@ -17,6 +17,9 @@ import sys
 import tempfile
 import unittest
 
+# Язык сообщений закреплён явно, см. пояснение в test_guard.py.
+os.environ.setdefault("ABT_LANG", "en")
+
 HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "retry_guard.py")
 
 
@@ -69,7 +72,7 @@ class TestBlindRetryIsStopped(RetryGuardTestCase):
             self.call(cmd, record=True)
         reason = self.call(cmd)
         self.assertIsNotNone(reason, "слепой повтор обязан блокироваться")
-        self.assertIn("правило 3 попыток", reason)
+        self.assertIn("three-attempts rule", reason)
         self.assertIn(cmd, reason)
 
     def test_whitespace_does_not_create_a_new_attempt(self):

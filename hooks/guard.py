@@ -26,6 +26,10 @@ import re
 import shlex
 import sys
 
+# Тексты для человека живут в каталоге, а не здесь: язык выбирается
+# пользователем, и правило не должно зависеть от того, какой он выбрал.
+from messages import msg, use_project
+
 # Инструменты, которые пишут в файлы. Read сюда намеренно не входит.
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
@@ -252,21 +256,12 @@ def check_memory_bash(tokens, agent):
             continue
         if agent == "browser-tester" and any(d in path for d in BROWSER_TESTER_WRITE_DIRS):
             continue
-        deny(
-            "BLOCKED [W/Write]: {agent} пытается записать {target} командой оболочки.\n\n"
-            "Причина блокировки: этой роли запись вне своей зоны не положена по матрице "
-            "разрешений. Инструмент Write у неё уже ограничен — запись через оболочку "
-            "закрывается тем же правилом, иначе ограничение обходилось бы одной строкой.\n\n"
-            "Разрешено: .claude/agent-memory/{agent}/{extra}\n\n"
-            "Альтернативы:\n"
-            "  1. Нужен файл вне зоны — верни задачу оркестратору, её сделает профильный агент\n"
-            "  2. Заметка на будущее — пиши в свою папку памяти\n"
-            "  3. Ограничение мешает по делу — меняй матрицу осознанно, а не в обход".format(
-                agent=agent,
-                target=target,
-                extra=" и тест-артефакты в tests/" if agent == "browser-tester" else "",
-            )
-        )
+        deny(msg(
+            "memory.shell_write",
+            agent=agent,
+            target=target,
+            extra=msg("memory.extra_browser_tester") if agent == "browser-tester" else "",
+        ))
 
 
 def check_fs(tokens):
@@ -299,31 +294,11 @@ def check_fs(tokens):
         # Переменная в пути опасна сама по себе: при пустом значении путь
         # схлопывается в корень. Проверить её значение хук не может.
         if "$" in target or "%" in target:
-            deny(
-                "BLOCKED [P/Privileged]: rm -rf по цели «{}» — путь содержит переменную.\n\n"
-                "Причина блокировки: если переменная окажется пустой, путь схлопнется "
-                "в корень и команда снесёт систему. Проверить её значение хук не может.\n\n"
-                "Альтернативы:\n"
-                "  1. Подставь путь буквально, без переменной — это снимет блокировку\n"
-                "  2. Сначала выведи цель отдельной командой и убедись, что она не пустая\n"
-                "  3. Если путь известен только во время выполнения — выполни удаление сам, "
-                "вне агента"
-                .format(target)
-            )
+            deny(msg("fs.rm_rf_variable", target=target))
 
         normalized = target.replace("\\", "/")
         if normalized in DANGEROUS_RM_TARGETS or normalized.rstrip("/") in ("", "~", ".", ".."):
-            deny(
-                "BLOCKED [P/Privileged]: rm -rf по цели «{}» — удаление по корню, "
-                "домашней директории, текущему каталогу или маске.\n\n"
-                "Причина блокировки: операция необратима и затрагивает файлы за пределами "
-                "задачи. Именно так теряются рабочие копии и данные, которых нет в git.\n\n"
-                "Альтернативы:\n"
-                "  1. Укажи конкретный подкаталог: rm -rf ./build\n"
-                "  2. Если файлы под контролем версий — git clean -n сначала покажет список\n"
-                "  3. Если нужен именно этот путь — выполни команду сам, вне агента"
-                .format(target)
-            )
+            deny(msg("fs.rm_rf_dangerous", target=target))
 
 
 # ---------------------------------------------------------------------------
@@ -344,55 +319,21 @@ def check_git(tokens):
 
     if subcommand == "push":
         if any(a == "--mirror" for a in args):
-            deny(
-                "BLOCKED [P/Privileged]: git push --mirror — приведение удалённого репозитория "
-                "к точной копии локального.\n\n"
-                "Причина блокировки: перезаписываются все ветки и теги, а ветки, которых нет "
-                "локально, удаляются на сервере. Одна команда затрагивает работу всей команды.\n\n"
-                "Альтернативы:\n"
-                "  1. git push origin <ветка> — отправить конкретную ветку\n"
-                "  2. git push --tags — если нужны именно теги\n"
-                "  3. Если зеркалирование действительно нужно — выполни команду сам, вне агента"
-            )
+            deny(msg("git.push_mirror"))
 
         # Удаление ветки на сервере: --delete или рефспек, начинающийся с двоеточия.
         if any(a in ("--delete", "-d") for a in args) or any(a.startswith(":") for a in args):
-            deny(
-                "BLOCKED [P/Privileged]: git push --delete — удаление ветки на сервере.\n\n"
-                "Причина блокировки: ветка исчезает у всех, кто с ней работает. "
-                "Класс P по principles/03 — подтверждать каждый раз, даже если разрешали раньше.\n\n"
-                "Альтернативы:\n"
-                "  1. Убедись, что ветка влита, и удали её сам через интерфейс хостинга\n"
-                "  2. Локальную копию можно удалить безопасно: git branch -d <ветка>\n"
-                "  3. Если ветка нужна как архив — поставь на неё тег перед удалением"
-            )
+            deny(msg("git.push_delete"))
 
         forced = any(a == "--force" or (a.startswith("-") and not a.startswith("--") and "f" in a) for a in args)
         # Рефспек, начинающийся с плюса, — тот же force, только другим синтаксисом.
         plus_refspec = any(a.startswith("+") for a in args)
         if (forced or plus_refspec) and not any(a.startswith("--force-with-lease") for a in args):
             syntax = "git push origin +<ветка>" if plus_refspec and not forced else "git push --force"
-            deny(
-                "BLOCKED [P/Privileged]: {} — принудительная перезапись истории.\n\n"
-                "Причина блокировки: теряются коммиты, которые уже видят другие разработчики. "
-                "Восстановить их можно только из чужих локальных копий.\n"
-                "Рефспек с плюсом впереди (+main) означает ровно то же, что и --force.\n\n"
-                "Альтернативы:\n"
-                "  1. git push --force-with-lease — блокируется, если кто-то запушил после тебя\n"
-                "  2. git push без флага и без плюса — если конфликта нет\n"
-                "  3. git revert вместо перезаписи — история остаётся целой".format(syntax)
-            )
+            deny(msg("git.push_force", syntax=syntax))
 
     if subcommand == "reset" and "--hard" in args:
-        deny(
-            "BLOCKED [W/Write]: git reset --hard — сброс рабочей копии без возможности отката.\n\n"
-            "Причина блокировки: незакоммиченные изменения исчезают безвозвратно, "
-            "git их нигде не сохраняет.\n\n"
-            "Альтернативы:\n"
-            "  1. git stash — спрятать изменения с возможностью вернуть\n"
-            "  2. git checkout <файл> — откатить точечно, а не всё сразу\n"
-            "  3. Если сброс действительно нужен — сделай git stash перед ним"
-        )
+        deny(msg("git.reset_hard"))
 
     if subcommand == "clean":
         # -n и --dry-run ничего не удаляют, а показывают список — это безопасно
@@ -409,15 +350,7 @@ def check_git(tokens):
         # Проверяем не набор букв, а сам факт вызова: без -f git clean и так
         # откажется работать, поэтому любой недry-run вызов — намерение удалять.
         if not safe:
-            deny(
-                    "BLOCKED [W/Write]: git clean — удаление неотслеживаемых файлов.\n\n"
-                    "Причина блокировки: под удаление попадают .env, локальные конфиги "
-                    "и всё, что намеренно не в git.\n\n"
-                    "Альтернативы:\n"
-                    "  1. git clean -n — сухой прогон, покажет список без удаления\n"
-                    "  2. git clean -i — интерактивный режим с выбором\n"
-                    "  3. Удали конкретные файлы вручную"
-                )
+            deny(msg("git.clean"))
 
     # git restore делает то же, что checkout --, и в справке git предлагается
     # как современная замена, поэтому правило обязано покрывать обе формы.
@@ -426,17 +359,7 @@ def check_git(tokens):
         # any, а не all: `git checkout -- . README` откатывает всё точно так же,
         # а наличие второго пути раньше снимало блокировку.
         if any(t in (".", "./", "*", "./*", ":/") for t in tail):
-            deny(
-                "BLOCKED [W/Write]: git {} по всей рабочей копии — откат всех изменений.\n\n"
-                "Причина блокировки: правки во всех файлах пропадают разом, включая те, "
-                "которых задача не касалась.\n\n"
-                "Альтернативы:\n"
-                "  1. git {} -- <конкретный-файл>\n"
-                "  2. git stash — сохранить, а потом решить\n"
-                "  3. git diff — сначала посмотри, что именно потеряется".format(
-                    subcommand, subcommand
-                )
-            )
+            deny(msg("git.checkout_all", subcommand=subcommand))
 
 
 # ---------------------------------------------------------------------------
@@ -490,36 +413,13 @@ def _check_sql_statement(flat):
     has_where = re.search(r"\bwhere\b", strip_parenthesised(flat), re.I) is not None
 
     if re.search(r"\bdelete\s+from\b", flat, re.I) and not has_where:
-        deny(
-            "BLOCKED [P/Privileged]: DELETE FROM без WHERE — удаление всех строк таблицы.\n\n"
-            "Причина блокировки: запрос без WHERE почти всегда означает опечатку или "
-            "недодуманное условие. Откатить его нечем.\n\n"
-            "Альтернативы:\n"
-            "  1. Добавь WHERE с явным условием\n"
-            "  2. Сначала оцени объём: SELECT COUNT(*) с тем же WHERE\n"
-            "  3. Если нужно очистить таблицу целиком — сделай дамп и выполни команду сам"
-        )
+        deny(msg("sql.delete_no_where"))
 
     if re.search(r"\bupdate\s+[a-z_][\w.]*\s+set\b", flat, re.I) and not has_where:
-        deny(
-            "BLOCKED [P/Privileged]: UPDATE без WHERE — изменение всех строк таблицы.\n\n"
-            "Причина блокировки: прежние значения нигде не сохраняются, восстановить их "
-            "можно только из бэкапа.\n\n"
-            "Альтернативы:\n"
-            "  1. Добавь WHERE с явным условием\n"
-            "  2. Сначала оцени объём: SELECT COUNT(*) с тем же WHERE\n"
-            "  3. Если массовое обновление нужно — сделай дамп таблицы заранее"
-        )
+        deny(msg("sql.update_no_where"))
 
     if re.search(r"\b(drop\s+(database|schema|table)|truncate\b)", flat, re.I):
-        deny(
-            "BLOCKED [P/Privileged]: DROP или TRUNCATE — удаление структуры или всех данных.\n\n"
-            "Причина блокировки: операция необратима и не журналируется как обычные изменения.\n\n"
-            "Альтернативы:\n"
-            "  1. Сделай дамп затронутых таблиц и подтверди операцию вручную\n"
-            "  2. На боевой БД — только со свежим бэкапом и подтверждением владельца\n"
-            "  3. Если это миграция — оформи её файлом миграции, а не разовой командой"
-        )
+        deny(msg("sql.drop_truncate"))
 
 
 # ---------------------------------------------------------------------------
@@ -529,16 +429,7 @@ def check_env(tool_name, file_path, _agent):
     if tool_name not in WRITE_TOOLS or not file_path:
         return
     if is_protected_env(file_path):
-        deny(
-            "BLOCKED [P/Privileged]: запись в {} — правка файла с секретами.\n\n"
-            "Причина блокировки: .env содержит ключи и пароли. Изменение вслепую ломает "
-            "окружение, а случайная запись секрета не в тот файл может утечь в git.\n\n"
-            "Альтернативы:\n"
-            "  1. Прочитать .env можно — хук блокирует только запись\n"
-            "  2. Нужную переменную добавь в .env.example, значение перенесёт владелец\n"
-            "  3. Если правка действительно нужна — сделай её сам, вне агента"
-            .format(file_path)
-        )
+        deny(msg("env.write", path=file_path))
 
 
 # ---------------------------------------------------------------------------
@@ -573,22 +464,13 @@ def check_memory(tool_name, file_path, agent):
     if tool_name not in denied:
         return
 
-    deny(
-        "BLOCKED [W/Write]: {agent} пытается изменить {path} инструментом {tool}.\n\n"
-        "Причина блокировки: этот инструмент роли не положен по матрице разрешений. "
-        "Он появился у неё только потому, что включено поле memory — оно выдаёт "
-        "Read/Write/Edit в обход списка tools.\n\n"
-        "Разрешено: .claude/agent-memory/{agent}/{extra}\n\n"
-        "Альтернативы:\n"
-        "  1. Нужна правка вне зоны — верни задачу оркестратору, её сделает профильный агент\n"
-        "  2. Заметка на будущее — пиши в свою папку памяти\n"
-        "  3. Ограничение мешает по делу — меняй матрицу осознанно, а не в обход".format(
-            agent=agent,
-            path=file_path,
-            tool=tool_name,
-            extra=" и тест-артефакты в tests/" if agent == "browser-tester" else "",
-        )
-    )
+    deny(msg(
+        "memory.tool_write",
+        agent=agent,
+        path=file_path,
+        tool=tool_name,
+        extra=msg("memory.extra_browser_tester") if agent == "browser-tester" else "",
+    ))
 
 
 def check_env_bash(tokens):
@@ -599,15 +481,7 @@ def check_env_bash(tokens):
     мимо инструментов Edit и Write, то есть мимо проверки по имени файла.
     """
     def blocked(path, how):
-        deny(
-            "BLOCKED [P/Privileged]: {} — {}.\n\n"
-            "Причина блокировки: .env содержит ключи и пароли. Перезапись через "
-            "оболочку так же необратима, как через редактор, и так же ломает окружение.\n\n"
-            "Альтернативы:\n"
-            "  1. Чтение не ограничено: cat .env, grep KEY .env работают\n"
-            "  2. Нужную переменную добавь в .env.example, значение перенесёт владелец\n"
-            "  3. Если правка действительно нужна — сделай её сам, вне агента".format(path, how)
-        )
+        deny(msg("env.shell", path=path, how=how))
 
     # Перенаправление вывода в файл: > .env, >> .env.local.
     # Ищем по токенам, а не по тексту: символ > внутри кавычек оператором
@@ -616,7 +490,7 @@ def check_env_bash(tokens):
         if token in (">", ">>", ">|", "&>", ">&") and index + 1 < len(tokens):
             target = tokens[index + 1]
             if is_protected_env(target):
-                blocked(target, "перезапись через перенаправление вывода")
+                blocked(target, msg("env.how_redirect"))
 
     if not tokens:
         return
@@ -637,7 +511,7 @@ def check_env_bash(tokens):
 
     for target in targets:
         if is_protected_env(target):
-            blocked(target, "изменение или удаление командой " + command)
+            blocked(target, msg("env.how_command", command=command))
 
 
 BASH_RULES = {"fs": check_fs, "git": check_git, "sql": check_sql, "env": check_env_bash}
@@ -686,28 +560,14 @@ def main():
     # Пустой список правил отключает защиту целиком и так же молча, как опечатка.
     # Выключать хук нужно, убирая его из конфигурации, а не обнуляя --rules.
     if not enabled:
-        deny(
-            "guard.py: список правил пуст — защита не выполняется.\n\n"
-            "Причина блокировки: пустой --rules отключает все проверки, но выглядит "
-            "как рабочая конфигурация. Хук отказывает, пока это не исправлено.\n\n"
-            "Допустимые правила: {}.\n"
-            "Если хук нужно отключить — убери его из конфигурации, а не обнуляй "
-            "список правил.".format(", ".join(ALL_RULES))
-        )
+        deny(msg("config.empty_rules", rules=", ".join(ALL_RULES)))
 
     # Опечатка в имени правила не должна тихо отключать защиту: молчаливо
     # неработающий хук хуже отсутствующего, потому что создаёт уверенность.
     unknown = sorted(enabled - set(ALL_RULES))
     if unknown:
-        deny(
-            "guard.py: в конфигурации указаны неизвестные правила: {}.\n\n"
-            "Причина блокировки: опечатка в имени правила молча отключила бы защиту. "
-            "Хук отказывает, пока конфигурация не исправлена.\n\n"
-            "Допустимые правила: {}.\n"
-            "Где править: значение --rules в hooks.json или settings.json.".format(
-                ", ".join(unknown), ", ".join(ALL_RULES)
-            )
-        )
+        deny(msg("config.unknown_rules",
+                 unknown=", ".join(unknown), rules=", ".join(ALL_RULES)))
 
     raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     if not raw.strip():
@@ -716,8 +576,11 @@ def main():
         data = json.loads(raw)
     except ValueError:
         # Неразбираемый вход — не наше дело блокировать, но и молчать нельзя.
-        sys.stderr.write("guard.py: не удалось разобрать JSON хука\n")
+        sys.stderr.write(msg("config.bad_json"))
         return
+
+    # Язык сообщений может быть задан файлом в проекте, а не только окружением.
+    use_project(data.get("cwd") or "")
 
     tool_name = data.get("tool_name") or ""
     tool_input = data.get("tool_input") or {}

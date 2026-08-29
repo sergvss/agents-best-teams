@@ -20,6 +20,11 @@ import unittest
 
 HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "session_start.py")
 
+# Язык закреплён явно и заодно снимает вопрос о выборе языка: с заданным
+# ABT_LANG хук про язык не спрашивает, и тесты проверяют именно подсказку
+# про сборку команды. Отдельный тест ниже снимает переменную намеренно.
+os.environ.setdefault("ABT_LANG", "en")
+
 ROLE = """---
 name: {name}
 description: роль
@@ -65,7 +70,7 @@ class TestPromptAppears(SessionStartTestCase):
         self.assertIn("setup-agent-team", prompt)
         # Подсказка должна называть и то, что уже работает, иначе выглядит
         # так, будто не заработало ничего.
-        self.assertIn("хуки", prompt)
+        self.assertIn("hooks", prompt)
 
     def test_offers_setup_when_agents_dir_has_foreign_roles_only(self):
         # Чужие роли в проекте — не наша команда.
@@ -118,6 +123,53 @@ class TestContract(SessionStartTestCase):
         with open(os.path.join(self.cwd, ".claude", "agents"), "w", encoding="utf-8") as fh:
             fh.write("не каталог")
         self.assertIsNotNone(run_hook(self.cwd))
+
+
+class TestLanguagePrompt(SessionStartTestCase):
+    """
+    Вопрос о языке. Он нужен ровно один раз и не должен превращаться
+    в ещё одну подсказку, которую учатся пролистывать.
+    """
+
+    def run_without_lang(self, cwd, lang_file=None):
+        """Прогон с намеренно снятым ABT_LANG — иначе язык уже задан."""
+        if lang_file is not None:
+            os.makedirs(os.path.join(cwd, ".claude"), exist_ok=True)
+            with open(os.path.join(cwd, ".claude", ".abt-lang"), "w", encoding="utf-8") as fh:
+                fh.write(lang_file)
+        payload = {"hook_event_name": "SessionStart", "source": "startup", "cwd": cwd}
+        env = {k: v for k, v in os.environ.items() if k != "ABT_LANG"}
+        proc = subprocess.run(
+            [sys.executable, "-X", "utf8", HOOK],
+            input=json.dumps(payload).encode("utf-8"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
+        out = proc.stdout.decode("utf-8").strip()
+        return json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else None
+
+    def test_asks_when_language_is_not_chosen(self):
+        prompt = self.run_without_lang(self.cwd)
+        self.assertIsNotNone(prompt)
+        self.assertIn(".abt-lang", prompt)
+
+    def test_silent_about_language_once_the_file_exists(self):
+        # Команда развёрнута и язык выбран — сказать нечего.
+        self.add_role("dev-backend")
+        self.assertIsNone(self.run_without_lang(self.cwd, lang_file="ru\n"))
+
+    def test_garbage_in_the_file_counts_as_not_chosen(self):
+        # Файл с мусором хуже отсутствующего: он выглядит настроенным.
+        self.add_role("dev-backend")
+        prompt = self.run_without_lang(self.cwd, lang_file="deutsch\n")
+        self.assertIsNotNone(prompt)
+        self.assertIn(".abt-lang", prompt)
+
+    def test_language_question_does_not_replace_the_team_offer(self):
+        # В новом проекте поводов два, и оба должны дойти до агента.
+        prompt = self.run_without_lang(self.cwd)
+        self.assertIn(".abt-lang", prompt)
+        self.assertIn("setup-agent-team", prompt)
 
 
 if __name__ == "__main__":

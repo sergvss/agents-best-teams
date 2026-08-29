@@ -29,6 +29,9 @@ import sys
 import tempfile
 import time
 
+# Тексты для человека — в каталоге сообщений, см. messages.py.
+from messages import msg, use_project
+
 DEFAULT_MAX_BLOCKS = 2
 DEFAULT_TIMEOUT_S = 300
 COUNTER_TTL_S = 3600
@@ -95,7 +98,7 @@ def main():
         args = parser.parse_args()
     except SystemExit as exc:
         if exc.code not in (0, None):
-            sys.stderr.write("verify.py: ошибка в аргументах хука, проверка не выполнена.\n")
+            sys.stderr.write(msg("verify.bad_args"))
             return 1
         raise
 
@@ -110,13 +113,11 @@ def main():
     # Ошибка конфигурации не должна запирать сессию: для Stop-хука блокировка
     # дороже пропуска, поэтому здесь fail-open, в отличие от guard.py.
     if not args.command:
-        sys.stderr.write(
-            "verify.py: не задан --command, проверять нечего. "
-            "Укажи команду тестов в конфигурации хука или убери хук.\n"
-        )
+        sys.stderr.write(msg("verify.no_command"))
         return 1
 
     cwd = data.get("cwd") or os.getcwd()
+    use_project(cwd)
     session_id = str(data.get("session_id") or "no-session")
 
     # Пропуск при чистом дереве — опция, а не поведение по умолчанию.
@@ -140,9 +141,9 @@ def main():
         # Разрешать завершение здесь означало бы, что зависшие тесты снимают гейт.
         timed_out = True
         failed = True
-        output = "Проверка не уложилась в {} с и была прервана.".format(args.timeout)
+        output = msg("verify.timeout", timeout=args.timeout)
     except OSError as exc:
-        sys.stderr.write("verify.py: не удалось запустить проверку: {}\n".format(exc))
+        sys.stderr.write(msg("verify.launch_failed", error=exc))
         return 1
 
     if not failed:
@@ -151,27 +152,17 @@ def main():
 
     tail = "\n".join(output.splitlines()[-25:])
     if timed_out:
-        tail += "\n\nЕсли проверка законно долгая — возьми более узкую команду или подними --timeout."
+        tail += msg("verify.slow_hint")
     blocks = read_blocks(counter) + 1
     write_blocks(counter, blocks)
 
     if blocks > args.max_blocks:
         # Бесконечно блокировать нельзя: агент может быть не в состоянии починить,
         # и сессия окажется заперта. Но уйти молча тоже нельзя.
-        sys.stderr.write(
-            "verify.py: проверка всё ещё падает, но блокировать больше не буду "
-            "({} раз подряд). Задача НЕ доведена до готовности — скажи об этом "
-            "пользователю прямо, не выдавай работу за законченную.\n\n{}\n".format(blocks - 1, tail)
-        )
+        sys.stderr.write(msg("verify.giving_up", blocks=blocks - 1, tail=tail))
         return 0
 
-    sys.stderr.write(
-        "НЕ ЗАВЕРШЕНО: проверка «{}» падает.\n\n"
-        "Условие готовности не выполнено, поэтому работа не закончена. "
-        "Почини причину, а не симптом: подавлять тест, помечать его skip или "
-        "ослаблять проверку — это не починка.\n\n"
-        "Вывод команды (последние строки):\n{}\n".format(args.command, tail)
-    )
+    sys.stderr.write(msg("verify.not_done", command=args.command, tail=tail))
     return 2
 
 

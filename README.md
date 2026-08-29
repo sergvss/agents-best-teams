@@ -34,7 +34,7 @@
 
 A methodology for building a **team of AI agents** for software development. For people using Claude Code, Codex, Cursor or any other agent CLI who want to move from "one super-agent for everything" to a specialised team with explicit roles, routing, and protection against regressions.
 
-> **Read this before you install.** This README and the plugin's metadata are in English. Everything else — the principles, the role templates, the checklists, and the text a hook prints when it blocks something — is written in Russian. That is a deliberate boundary, not an oversight; [The language situation](#the-language-situation) explains exactly what still works for you and what does not.
+> **Read this before you install.** This README, the [concepts page](docs/concepts.en.md) and everything the hooks say to you are in English. The methodology's prose — the principles, the role templates, the checklists — is written in Russian, deliberately rather than by oversight. [The language situation](#the-language-situation) explains what that does and does not cost you.
 
 ---
 
@@ -94,6 +94,7 @@ The skill reads your stack, proposes a roster, copies the templates and adapts t
 >
 > Do not test the protection with something genuinely destructive like `rm -rf .`: if the hook is not working — which is the very thing you are testing — the command runs.
 
+**The concepts you will meet — Tier, risk classes, 2-of-3, agent memory** — [docs/concepts.en.md](docs/concepts.en.md).
 **Other platforms and manual installation** — [docs/install.md](docs/install.md).
 **First run, step by step** — [docs/quick-start.md](docs/quick-start.md).
 **Subagents, agent teams and workflows: which to pick** — [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).
@@ -189,6 +190,7 @@ hooks/         Working protective hooks — the Claude Code layer
                verify.py — do not finish with failing tests
                approval_log.py — privileged-action log
                retry_guard.py — the three-attempts rule
+               messages.py — every message, in English and Russian
                configuration and tests
 
 skills/        Checklists as invocable skills + team assembly for a project
@@ -223,17 +225,24 @@ docs/          Install, update, model configuration, first run,
 
 Worth being precise about, because "the docs are in Russian" and "you cannot use it" are not the same statement.
 
-**What is in English:** this README and the plugin's own metadata — the description you see in `/plugin` and in the marketplace, plus the one-line description of every skill shown in `/help`. Ten strings in total, kept in English because they are what people read before they can decide anything.
+**In English:** this README, [the concepts page](docs/concepts.en.md), the plugin's metadata, and **everything the hooks say to you** — every block reason and every suggested alternative.
 
-**What is in Russian:** the 11 principles, the 20 role templates, the 5 checklists, the bodies of the skills, everything under `docs/`, the text the hooks print when they block something, and the Russian README at [README.ru.md](README.ru.md).
+**In Russian:** the 11 principles, the 20 role templates, the 5 checklists, the bodies of the skills, the rest of `docs/`, and the Russian README at [README.ru.md](README.ru.md).
 
-**Does the plugin still work for you?** Mechanically, yes. The roles and skills are prompts the model reads, and the model is multilingual: it reads a Russian role definition and answers you in the language you write in. The protective hooks are Python — they do not care what language anyone speaks.
+**Choosing the language.** Hook messages exist in both, and the rules are identical either way — language changes what you read, never what is blocked:
 
-**Where it will bite.** When a hook blocks an action, the explanation and the suggested alternatives arrive in Russian. Those strings live in the hook source, not in a message catalogue, so no setting switches them. You would be reading machine translation at exactly the moment something went wrong — the worst possible moment for it.
+```bash
+ABT_LANG=ru claude                                    # one session
+mkdir -p .claude && printf 'ru\n' > .claude/.abt-lang # for the project
+```
 
-**Why it is not all translated.** 6,031 lines of prose that changes every release. A second copy would drift from the first, and a role template that quietly disagrees with its Russian original is more dangerous than a missing one — you would be running rules you cannot verify. A translation needs a maintainer who keeps it honest, not a one-off pass.
+English is the default. If no language is chosen, the plugin asks once at the start of a session and remembers the answer. An unrecognised value falls back to English instead of disabling anything.
 
-If you want to use this in English and are willing to co-maintain the translation, open an issue. A message catalogue for the hooks is the highest-value first step, and it is a small one.
+**Does the rest still work for you?** Yes, and not by luck. The roles and skills are prompts the model reads, and the model is multilingual: it reads a Russian role definition and answers in the language you write in. When `setup-agent-team` deploys a team it can write the roles in your language as it adapts them to your stack — so the roles you actually work with are yours to read.
+
+**Why the prose is not translated.** 6,031 lines that change every release. A second copy would drift from the first, and a role template that quietly disagrees with its Russian original is more dangerous than a missing one — you would be running rules you cannot verify. That is also why role translation happens at deployment rather than in this repository: one canonical copy here, nothing to drift.
+
+If you want to help maintain a fuller English version, open an issue.
 
 ---
 
