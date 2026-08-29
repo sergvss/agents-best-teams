@@ -122,6 +122,7 @@ Two reasons an update "does not arrive" even though you did everything right:
 | `.claude/agent-memory/` | Accumulated knowledge of your roles; not recoverable |
 | `.claude/approval-log.jsonl` | The privileged-action log |
 | `.claude/settings.json` | Your settings — port new hook blocks in by hand |
+| `.claude/.abt-lang` | The language you chose for hook messages |
 | `.claude/agents/` | The roles are adapted to your project |
 
 `hooks/*.py` and `skills/` are safe to overwrite — they contain nothing specific to you.
@@ -196,7 +197,8 @@ hooks/         Working protective hooks — the Claude Code layer
 skills/        Checklists as invocable skills + team assembly for a project
 
 docs/          Install, update, model configuration, first run,
-               choosing an execution mechanism, verification
+               choosing an execution mechanism, verification,
+               concepts.en.md — the terms, in English
 
 .claude-plugin/  Plugin and marketplace manifests
 ```

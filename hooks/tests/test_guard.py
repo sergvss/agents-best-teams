@@ -529,6 +529,26 @@ class TestPackaging(unittest.TestCase):
                                 "неизвестные правила: {}".format(sorted(rules - self.all_rules)),
                             )
 
+    def test_every_script_in_the_configs_exists(self):
+        """
+        Конфигурация обязана ссылаться только на существующие файлы.
+
+        Отсутствующий скрипт не даёт ошибки: хук просто не запускается, а
+        выглядит настроенным — то есть худший вид поломки из возможных.
+        Проверка заодно держит в узде инструкцию установки: если в конфигурации
+        появится новый хук, забыть про него в docs/install.md будет нельзя,
+        потому что копируется вся маска hooks/*.py.
+        """
+        hooks_dir = os.path.normpath(os.path.dirname(GUARD))
+        for config in ("hooks.json", "settings.example.json"):
+            raw = json.dumps(self._json("hooks", config))
+            for script in sorted(set(re.findall(r"([a-z_]+\.py)", raw))):
+                with self.subTest(config=config, script=script):
+                    self.assertTrue(
+                        os.path.exists(os.path.join(hooks_dir, script)),
+                        "конфигурация {} ссылается на несуществующий {}".format(config, script),
+                    )
+
     def test_bash_matcher_enables_shell_side_env_rule(self):
         # Защита .env двусторонняя: без правила env на матчере Bash
         # запись через перенаправление вывода проходит насквозь.
