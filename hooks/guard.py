@@ -329,7 +329,8 @@ def check_git(tokens):
         # Рефспек, начинающийся с плюса, — тот же force, только другим синтаксисом.
         plus_refspec = any(a.startswith("+") for a in args)
         if (forced or plus_refspec) and not any(a.startswith("--force-with-lease") for a in args):
-            syntax = "git push origin +<ветка>" if plus_refspec and not forced else "git push --force"
+            syntax = msg("git.syntax_plus_refspec") if plus_refspec and not forced \
+                else msg("git.syntax_force")
             deny(msg("git.push_force", syntax=syntax))
 
     if subcommand == "reset" and "--hard" in args:
@@ -548,11 +549,11 @@ def analyze_bash(command, enabled, agent="", depth=0):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Защитные PreToolUse-хуки")
+    parser = argparse.ArgumentParser(description=msg("cli.guard_description"))
     parser.add_argument(
         "--rules",
         default=",".join(ALL_RULES),
-        help="Список правил через запятую: " + ", ".join(ALL_RULES),
+        help=msg("cli.guard_rules", rules=", ".join(ALL_RULES)),
     )
     args = parser.parse_args()
     enabled = {r.strip() for r in args.rules.split(",") if r.strip()}

@@ -84,14 +84,14 @@ def has_uncommitted_changes(cwd):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Stop-хук: проверка перед завершением")
-    parser.add_argument("--command", help="команда проверки, например: pytest -q")
+    parser = argparse.ArgumentParser(description=msg("cli.verify_description"))
+    parser.add_argument("--command", help=msg("cli.verify_command"))
     parser.add_argument("--max-blocks", type=int, default=DEFAULT_MAX_BLOCKS,
-                        help="сколько раз подряд блокировать завершение в одной сессии")
+                        help=msg("cli.verify_max_blocks"))
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_S,
-                        help="предел выполнения команды проверки, секунд")
+                        help=msg("cli.verify_timeout"))
     parser.add_argument("--changed-only", action="store_true",
-                        help="пропускать проверку, если в рабочей копии нет изменений")
+                        help=msg("cli.verify_changed_only"))
     # По умолчанию argparse завершает процесс кодом 2, а для Stop-хука это
     # «блокировать». Опечатка в конфигурации заперла бы сессию навсегда.
     try:

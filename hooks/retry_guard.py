@@ -98,16 +98,16 @@ def read_input():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Правило трёх попыток")
+    parser = argparse.ArgumentParser(description=msg("cli.retry_description"))
     parser.add_argument("--record", action="store_true",
-                        help="режим учёта неудач, для события PostToolUseFailure")
+                        help=msg("cli.retry_record"))
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
-                        help="сколько неудач подряд допустимо")
+                        help=msg("cli.retry_limit"))
     try:
         args = parser.parse_args()
     except SystemExit as exc:
         if exc.code not in (0, None):
-            sys.stderr.write("retry_guard: ошибка в аргументах хука.\n")
+            sys.stderr.write(msg("cli.retry_bad_args"))
             return 0
         raise
 

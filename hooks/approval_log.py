@@ -27,22 +27,30 @@ import re
 import sys
 import time
 
+# Тексты для человека — в каталоге сообщений, см. messages.py.
+from messages import msg, use_project
+
 DEFAULT_LOG = os.path.join(".claude", "approval-log.jsonl")
 
 # Что попадает в журнал. Ключ — класс риска по principles/03, значение —
 # распознаватели. Список намеренно короткий: журнал, куда пишется всё подряд,
 # читать никто не станет, и он перестанет быть журналом.
+#
+# Метки — устойчивые идентификаторы, а не текст для человека, и потому не
+# переводятся. Журнал это запись, а не сообщение: если метки зависели бы от
+# языка, один файл после смены ABT_LANG содержал бы записи на двух языках,
+# и по нему нельзя было бы ни искать, ни считать.
 BASH_PATTERNS = [
     ("W", "git-commit", r"\bgit\b.*\bcommit\b"),
     ("W", "git-push", r"\bgit\b.*\bpush\b"),
     ("W", "git-tag", r"\bgit\b.*\btag\b"),
     ("W", "git-merge", r"\bgit\b.*\b(merge|rebase|cherry-pick)\b"),
-    ("W", "миграция", r"\b(alembic|flyway|knex|liquibase)\b|\bmanage\.py\s+migrate\b|\bmigrate\s+(up|deploy|latest)\b"),
-    ("W", "установка пакетов", r"\b(pip|pip3|npm|yarn|pnpm|poetry|uv)\b.*\b(install|add|remove|uninstall)\b"),
-    ("P", "обращение к БД", r"\b(psql|mysql|mariadb|sqlite3|mongosh|clickhouse-client)\b"),
-    ("P", "права и владение", r"\b(chmod|chown|icacls)\b"),
-    ("P", "управление службами", r"\b(systemctl|service|sc\.exe)\b"),
-    ("P", "чтение секретов", r"\b(cat|less|more|head|tail|type)\b[^|;&]*\.env\b"),
+    ("W", "db-migration", r"\b(alembic|flyway|knex|liquibase)\b|\bmanage\.py\s+migrate\b|\bmigrate\s+(up|deploy|latest)\b"),
+    ("W", "package-install", r"\b(pip|pip3|npm|yarn|pnpm|poetry|uv)\b.*\b(install|add|remove|uninstall)\b"),
+    ("P", "db-access", r"\b(psql|mysql|mariadb|sqlite3|mongosh|clickhouse-client)\b"),
+    ("P", "permissions", r"\b(chmod|chown|icacls)\b"),
+    ("P", "service-control", r"\b(systemctl|service|sc\.exe)\b"),
+    ("P", "secret-read", r"\b(cat|less|more|head|tail|type)\b[^|;&]*\.env\b"),
 ]
 
 SENSITIVE_PATH = re.compile(r"(^|/)(\.env|\.git/|\.claude/settings|id_rsa|\.pem$)", re.I)
@@ -65,7 +73,7 @@ def classify(data):
     if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         path = payload.get("file_path") or payload.get("notebook_path") or ""
         if path and SENSITIVE_PATH.search(path.replace("\\", "/")):
-            return "P", "правка чувствительного файла", path
+            return "P", "sensitive-file-edit", path
         return None
 
     return None
@@ -88,6 +96,7 @@ def main():
     log_path = os.environ.get("AGENTS_APPROVAL_LOG") or DEFAULT_LOG
     if not os.path.isabs(log_path):
         log_path = os.path.join(data.get("cwd") or os.getcwd(), log_path)
+    use_project(data.get("cwd") or "")
 
     entry = {
         "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -106,7 +115,7 @@ def main():
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError as exc:
         # Журнал не должен ломать работу: сообщаем и уходим без ошибки.
-        sys.stderr.write("approval_log: не удалось записать журнал: {}\n".format(exc))
+        sys.stderr.write(msg("cli.approval_log_write_failed", error=exc))
 
     return 0
 

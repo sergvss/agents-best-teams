@@ -221,6 +221,16 @@ MESSAGES = {
               "  2. git push with no flag and no plus — if there is no conflict\n"
               "  3. git revert instead of rewriting — the history stays intact",
     },
+    # Подставляется внутрь git.push_force — значит, тоже обязано быть на языке
+    # сообщения. Иначе английский текст получает русское «<ветка>» внутри.
+    "git.syntax_plus_refspec": {
+        "ru": "git push origin +<ветка>",
+        "en": "git push origin +<branch>",
+    },
+    "git.syntax_force": {
+        "ru": "git push --force",
+        "en": "git push --force",
+    },
     "git.reset_hard": {
         "ru": "BLOCKED [W/Write]: git reset --hard — сброс рабочей копии без возможности отката.\n\n"
               "Причина блокировки: незакоммиченные изменения исчезают безвозвратно, "
@@ -473,6 +483,58 @@ MESSAGES = {
               "not the symptom: silencing a test, marking it skip or weakening the assertion "
               "is not a fix.\n\n"
               "Command output (last lines):\n{tail}\n",
+    },
+
+    # -- тексты --help -------------------------------------------------------
+    # Их видит тот, кто настраивает хуки руками. Читают редко, но правило одно
+    # на все строки: текст для человека живёт здесь, а не в коде правила.
+    "cli.guard_description": {
+        "ru": "Защитные PreToolUse-хуки",
+        "en": "Protective PreToolUse hooks",
+    },
+    "cli.guard_rules": {
+        "ru": "Список правил через запятую: {rules}",
+        "en": "Comma-separated list of rules: {rules}",
+    },
+    "cli.retry_bad_args": {
+        "ru": "retry_guard: ошибка в аргументах хука.\n",
+        "en": "retry_guard: bad hook arguments.\n",
+    },
+    "cli.approval_log_write_failed": {
+        "ru": "approval_log: не удалось записать журнал: {error}\n",
+        "en": "approval_log: could not write the log: {error}\n",
+    },
+    "cli.retry_description": {
+        "ru": "Правило трёх попыток",
+        "en": "The three-attempts rule",
+    },
+    "cli.retry_record": {
+        "ru": "режим учёта неудач, для события PostToolUseFailure",
+        "en": "failure-counting mode, for the PostToolUseFailure event",
+    },
+    "cli.retry_limit": {
+        "ru": "сколько неудач подряд допустимо",
+        "en": "how many consecutive failures are allowed",
+    },
+    "cli.verify_description": {
+        "ru": "Stop-хук: проверка перед завершением",
+        "en": "Stop hook: run a check before finishing",
+    },
+    "cli.verify_command": {
+        "ru": "команда проверки, например: pytest -q",
+        "en": "the check command, for example: pytest -q",
+    },
+    "cli.verify_max_blocks": {
+        "ru": "сколько раз подряд блокировать завершение в одной сессии",
+        "en": "how many times in a row to block finishing within one session",
+    },
+    "cli.verify_timeout": {
+        "ru": "предел выполнения команды проверки, секунд",
+        "en": "time limit for the check command, in seconds",
+    },
+    "cli.verify_changed_only": {
+        "ru": "пропускать проверку, если в рабочей копии нет изменений",
+        "en": "skip the check when the working copy has no changes",
     },
 
     # -- session_start -------------------------------------------------------

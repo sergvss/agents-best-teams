@@ -777,6 +777,44 @@ class TestMessageCatalogue(unittest.TestCase):
             reason = json.loads(proc.stdout.decode("utf-8"))["hookSpecificOutput"]["permissionDecisionReason"]
             self.assertIn("Причина блокировки", reason)
 
+    def test_no_user_facing_text_left_in_hook_code(self):
+        """
+        Ни одной строки для человека вне каталога.
+
+        Проверяется через AST, а не грепом: докстринги и комментарии — это
+        пояснения для того, кто правит код, они остаются русскими намеренно.
+        Ищется другое — строковый литерал с кириллицей, который может доехать
+        до пользователя. Именно так нашлась подстановка «git push origin
+        +<ветка>», уезжавшая внутрь английского сообщения.
+        """
+        import ast
+        hooks_dir = os.path.normpath(os.path.dirname(GUARD))
+        cyrillic = re.compile(r"[А-Яа-яЁё]")
+        for name in sorted(os.listdir(hooks_dir)):
+            if not name.endswith(".py") or name == "messages.py":
+                continue
+            with open(os.path.join(hooks_dir, name), encoding="utf-8") as fh:
+                tree = ast.parse(fh.read())
+            docs = set()
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    doc = ast.get_docstring(node, clean=False)
+                    if doc:
+                        docs.add(doc)
+            leaked = [
+                (node.lineno, node.value[:60])
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and cyrillic.search(node.value)
+                and node.value not in docs
+            ]
+            with self.subTest(hook=name):
+                self.assertFalse(
+                    leaked,
+                    "текст мимо каталога в {}: {}".format(name, leaked[:3]),
+                )
+
     def test_guard_and_messages_are_self_sufficient_together(self):
         # Форма ручной установки: два файла в .claude/hooks/ и больше ничего.
         # Забыть messages.py при копировании — значит получить хук, который
