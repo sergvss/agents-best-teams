@@ -573,6 +573,9 @@ MESSAGES = {
               "или английском, — и запиши ответ в `.claude/.abt-lang` одним словом: `ru` или "
               "`en`. Это влияет только на текст для человека; правила и блокировки одинаковы "
               "на обоих языках.\n\n"
+              "Запись в `.claude/` Claude Code подтверждает отдельно, и это нормально: если "
+              "разрешения нет, не считай это провалом — отдай пользователю готовую строку "
+              "`printf 'ru\\n' > .claude/.abt-lang` и на этом закончи.\n\n"
               "Спрашивай один раз и не настаивай: если пользователь промолчал, останется "
               "английский, и вернуться к вопросу можно будет в любой момент.",
         "en": "The agents-best-teams language for this project has not been chosen: there is "
@@ -582,6 +585,9 @@ MESSAGES = {
               "Russian or English — and write the answer into `.claude/.abt-lang` as a single "
               "word: `ru` or `en`. This only affects text meant for humans; the rules and the "
               "blocks are identical in both languages.\n\n"
+              "Claude Code confirms writes into `.claude/` separately, and that is expected: "
+              "if permission is not given, do not treat it as a failure — hand the user the "
+              "ready line `printf 'ru\\n' > .claude/.abt-lang` and stop there.\n\n"
               "Ask once and do not push: if the user says nothing, English stays, and the "
               "question can be revisited at any time.",
     },
