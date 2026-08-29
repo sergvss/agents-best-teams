@@ -22,6 +22,7 @@
 
 <p align="center">
   <a href="#why">Why</a> ·
+  <a href="#quick-start">Quick start</a> ·
   <a href="#install">Install</a> ·
   <a href="#updating">Updating</a> ·
   <a href="#whats-inside">What's inside</a> ·
@@ -52,10 +53,22 @@ A methodology for building a **team of AI agents** for software development. For
 
 ## Install
 
-```
-/plugin marketplace add sergvss/agents-best-teams
-/plugin install agents-best-teams@sergvss
-```
+### Quick start
+
+Six steps from nothing to a working team. Each one is explained below — if something goes wrong, the answer is there.
+
+| | What to do |
+|---|---|
+| 1 | `/plugin marketplace add sergvss/agents-best-teams` |
+| 2 | `/plugin install agents-best-teams@sergvss` |
+| 3 | `/reload-plugins` — **only if** Claude Code printed `Run /reload-plugins to activate.` Until then nothing works |
+| 4 | Hook messages are in English. For Russian: `printf 'ru\n' > .claude/.abt-lang` |
+| 5 | Paste into the chat: `Разверни команду агентов в этом проекте через скилл agents-best-teams:setup-agent-team` |
+| 6 | Verify: ask the agent to run `echo check > .env.check`. It must be blocked |
+
+Steps 1-3 take a minute; step 5 takes a few minutes and a couple of decisions from you. Do not skip the sixth: a hook that never started is indistinguishable from one that is absent, and you want to find that out now rather than on the day it was needed.
+
+On macOS and Linux step 6 will most likely surface a problem — see below.
 
 > **It is not a typo that `sergvss` means two different things.** On the first line it is the **GitHub repository address**; on the second it is the **marketplace name** defined inside that repository.
 >
