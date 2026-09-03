@@ -14,6 +14,7 @@
 
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -509,9 +510,29 @@ class TestPackaging(unittest.TestCase):
         self.assertEqual(plugin["name"], "agents-best-teams")
         listed = [p["name"] for p in market["plugins"]]
         self.assertIn(plugin["name"], listed, "плагин не объявлен в маркетплейсе")
-        # Путь к хукам из манифеста обязан существовать.
-        hooks_path = plugin["hooks"].lstrip("./")
-        self.assertTrue(os.path.exists(os.path.join(self.root, hooks_path)))
+        # Стандартный hooks/hooks.json Claude Code грузит сам, поэтому
+        # объявлять его в манифесте нельзя: дубль отвергает загрузку ВСЕГО
+        # плагина («Duplicate hooks file detected»), то есть выключает и
+        # хуки, и скиллы. Установка при этом проходит успешно - поломка
+        # видна только в claude plugin list.
+        self.assertTrue(os.path.exists(os.path.join(self.root, "hooks", "hooks.json")))
+        extra = plugin.get("hooks")
+        if extra:
+            # normpath, а не lstrip("./"): lstrip снимает не префикс, а любые
+            # символы из набора и съедает точку у пути вида .config/hooks.json.
+            # На этой же ловушке мы уже обжигались в guard.py с `.claude`.
+            # Заодно нормализация ловит записи вроде `././hooks/hooks.json`,
+            # которые сравнение со списком строк пропустило бы.
+            normalized = posixpath.normpath(extra.replace("\\", "/"))
+            self.assertNotEqual(
+                normalized, "hooks/hooks.json",
+                "манифест объявляет стандартный hooks/hooks.json - плагин не загрузится",
+            )
+            # Ключ остаётся законным для ДОПОЛНИТЕЛЬНЫХ файлов конфигурации.
+            self.assertTrue(
+                os.path.exists(os.path.join(self.root, *normalized.split("/"))),
+                "манифест ссылается на несуществующий файл конфигурации хуков",
+            )
 
     def test_hook_configs_use_only_known_rules(self):
         # Опечатка здесь молча отключила бы защиту — ровно этот случай
