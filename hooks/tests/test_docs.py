@@ -20,6 +20,7 @@ CI пришлось бы не забыть добавить, а забытая �
 import io
 import os
 import re
+import subprocess
 import unittest
 
 REPO = os.path.normpath(
@@ -80,6 +81,59 @@ class TestReadmeAnchors(unittest.TestCase):
             for link in sorted(links):
                 with self.subTest(readme=name, anchor=link):
                     self.assertIn(link, headings, "нет раздела с таким якорем")
+
+
+class TestNothingPrivateLeaked(unittest.TestCase):
+    """
+    Репозиторий публичный, и утечка в нём необратима: коммит остаётся в
+    истории и в форках даже после правки. Поэтому проверяется не «нет ли
+    сейчас», а «не появилось ли» — на каждом прогоне.
+
+    Проверяются только отслеживаемые файлы: то, что лежит рядом, но не в git,
+    в публичный доступ не попадает.
+    """
+
+    def setUp(self):
+        out = subprocess.run(["git", "ls-files"], cwd=REPO, stdout=subprocess.PIPE,
+                             text=True, encoding="utf-8").stdout
+        self.tracked = [f for f in out.split("\n") if f.strip()]
+        self.assertTrue(self.tracked, "git ls-files ничего не вернул")
+
+    def _lines(self):
+        for name in self.tracked:
+            path = os.path.join(REPO, name)
+            if not os.path.exists(path):
+                continue
+            try:
+                # errors="replace", а не strict: в репозитории есть бинарные
+                # файлы (иконка), и падать на них проверка не должна —
+                # незапустившаяся проверка хуже отсутствующей.
+                with io.open(path, encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except OSError:
+                continue
+            if "\x00" in text[:4096]:
+                continue   # бинарный файл, искать в нём строки бессмысленно
+            for number, line in enumerate(text.splitlines(), 1):
+                yield name, number, line
+
+    def test_no_credentials(self):
+        secret = re.compile(
+            r"(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}"
+            r"|-----BEGIN [A-Z ]*PRIVATE KEY-----)")
+        for name, number, line in self._lines():
+            with self.subTest(where="{}:{}".format(name, number)):
+                self.assertIsNone(secret.search(line), "похоже на ключ или токен")
+
+    def test_no_personal_paths(self):
+        # Обобщённые имена из примеров — это документация, а не утечка.
+        placeholder = {"user", "you", "username", "youruser", "someone", "name", "me", "dev"}
+        home = re.compile(r"(?:C:[\\/]{1,2}Users[\\/]{1,2}|/home/|/Users/)([A-Za-z0-9_.-]+)")
+        for name, number, line in self._lines():
+            for match in home.finditer(line):
+                if match.group(1).lower() in placeholder:
+                    continue
+                self.fail("личный путь в {}:{} — {}".format(name, number, match.group(0)))
 
 
 class TestCountsMatchReality(unittest.TestCase):
