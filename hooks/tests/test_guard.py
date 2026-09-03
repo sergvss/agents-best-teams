@@ -14,6 +14,7 @@
 
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -516,11 +517,22 @@ class TestPackaging(unittest.TestCase):
         # видна только в claude plugin list.
         self.assertTrue(os.path.exists(os.path.join(self.root, "hooks", "hooks.json")))
         extra = plugin.get("hooks")
-        self.assertNotIn(extra, ("./hooks/hooks.json", "hooks/hooks.json"),
-                         "манифест объявляет стандартный hooks/hooks.json - плагин не загрузится")
-        # Ключ остаётся законным для ДОПОЛНИТЕЛЬНЫХ файлов конфигурации.
         if extra:
-            self.assertTrue(os.path.exists(os.path.join(self.root, extra.lstrip("./"))))
+            # normpath, а не lstrip("./"): lstrip снимает не префикс, а любые
+            # символы из набора и съедает точку у пути вида .config/hooks.json.
+            # На этой же ловушке мы уже обжигались в guard.py с `.claude`.
+            # Заодно нормализация ловит записи вроде `././hooks/hooks.json`,
+            # которые сравнение со списком строк пропустило бы.
+            normalized = posixpath.normpath(extra.replace("\\", "/"))
+            self.assertNotEqual(
+                normalized, "hooks/hooks.json",
+                "манифест объявляет стандартный hooks/hooks.json - плагин не загрузится",
+            )
+            # Ключ остаётся законным для ДОПОЛНИТЕЛЬНЫХ файлов конфигурации.
+            self.assertTrue(
+                os.path.exists(os.path.join(self.root, *normalized.split("/"))),
+                "манифест ссылается на несуществующий файл конфигурации хуков",
+            )
 
     def test_hook_configs_use_only_known_rules(self):
         # Опечатка здесь молча отключила бы защиту — ровно этот случай
