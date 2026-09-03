@@ -509,9 +509,18 @@ class TestPackaging(unittest.TestCase):
         self.assertEqual(plugin["name"], "agents-best-teams")
         listed = [p["name"] for p in market["plugins"]]
         self.assertIn(plugin["name"], listed, "плагин не объявлен в маркетплейсе")
-        # Путь к хукам из манифеста обязан существовать.
-        hooks_path = plugin["hooks"].lstrip("./")
-        self.assertTrue(os.path.exists(os.path.join(self.root, hooks_path)))
+        # Стандартный hooks/hooks.json Claude Code грузит сам, поэтому
+        # объявлять его в манифесте нельзя: дубль отвергает загрузку ВСЕГО
+        # плагина («Duplicate hooks file detected»), то есть выключает и
+        # хуки, и скиллы. Установка при этом проходит успешно - поломка
+        # видна только в claude plugin list.
+        self.assertTrue(os.path.exists(os.path.join(self.root, "hooks", "hooks.json")))
+        extra = plugin.get("hooks")
+        self.assertNotIn(extra, ("./hooks/hooks.json", "hooks/hooks.json"),
+                         "манифест объявляет стандартный hooks/hooks.json - плагин не загрузится")
+        # Ключ остаётся законным для ДОПОЛНИТЕЛЬНЫХ файлов конфигурации.
+        if extra:
+            self.assertTrue(os.path.exists(os.path.join(self.root, extra.lstrip("./"))))
 
     def test_hook_configs_use_only_known_rules(self):
         # Опечатка здесь молча отключила бы защиту — ровно этот случай
