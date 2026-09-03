@@ -570,6 +570,63 @@ class TestPackaging(unittest.TestCase):
                         "конфигурация {} ссылается на несуществующий {}".format(config, script),
                     )
 
+    def _wiring(self, config):
+        """Множество (событие, матчер, скрипт, аргументы) из конфигурации."""
+        data = self._json("hooks", config)
+        out = set()
+        for event, entries in data["hooks"].items():
+            for entry in entries:
+                for hook in entry.get("hooks", []):
+                    args = hook.get("args") or []
+                    if not args:
+                        continue
+                    out.add((event, entry.get("matcher", ""),
+                             os.path.basename(args[0]), tuple(args[1:])))
+        return out
+
+    def test_both_configs_wire_the_same_hooks(self):
+        """
+        Плагин и ручная установка обязаны давать одинаковую защиту.
+
+        Расхождение здесь ничем себя не проявляет: обе конфигурации валидны,
+        обе работают, просто у части пользователей часть правил не включена.
+        """
+        plugin = {(e, m, s, a) for e, m, s, a in self._wiring("hooks.json")}
+        manual = {(e, m, s, a) for e, m, s, a in self._wiring("settings.example.json")}
+        self.assertEqual(plugin, manual, "конфигурации разошлись по подключению хуков")
+
+    def test_privileged_actions_are_logged_on_success_and_failure(self):
+        """
+        Журнал висит на обоих событиях.
+
+        Проверено на живой установке: падающая команда порождает
+        PostToolUseFailure, а PostToolUse при этом не приходит. С хуком
+        только на успехе журнал не видел бы неудавшихся привилегированных
+        действий — а для аудита они интереснее удавшихся.
+        """
+        for config in ("hooks.json", "settings.example.json"):
+            wiring = self._wiring(config)
+            events = {e for e, _, s, _ in wiring if s == "approval_log.py"}
+            with self.subTest(config=config):
+                self.assertEqual(events, {"PostToolUse", "PostToolUseFailure"})
+
+    def test_session_start_covers_every_way_a_session_begins(self):
+        """
+        Матчер `startup` один не покрывает `/clear` — самый обычный способ
+        начать заново. Подсказка тогда не появлялась бы до полного
+        перезапуска, о чём никто бы не догадался.
+
+        Матчеры перечислены отдельными записями намеренно: альтернация
+        `startup|clear` для SessionStart не документирована, а тихо
+        переставший совпадать матчер выключает подсказку молча.
+        """
+        expected = {"startup", "clear", "resume", "fork"}
+        for config in ("hooks.json", "settings.example.json"):
+            matchers = {m for e, m, s, _ in self._wiring(config)
+                        if s == "session_start.py" and e == "SessionStart"}
+            with self.subTest(config=config):
+                self.assertEqual(matchers, expected)
+
     def test_bash_matcher_enables_shell_side_env_rule(self):
         # Защита .env двусторонняя: без правила env на матчере Bash
         # запись через перенаправление вывода проходит насквозь.

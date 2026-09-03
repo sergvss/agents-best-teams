@@ -82,7 +82,7 @@ Not everything starts working the moment you install. The precise picture:
 |---|---|---|
 | **Protective hooks** | immediately | Block filesystem destruction, force-push, writes to `.env`, SQL without `WHERE`; log privileged actions and stop blind retries of a failing command |
 | **Checklists as skills** | immediately | Claude pulls them in when relevant, or invoke them with `/` |
-| **Team setup prompt** | next session | It is a `SessionStart` hook, and that event already fired if you installed mid-session. `/reload-plugins` does not replay it |
+| **Team setup prompt** | next start | It is a `SessionStart` hook: the event already fired if you installed mid-session. `/clear` is enough — no need to restart entirely — but `/reload-plugins` will not do it |
 | **Team roles** | manual only | `setup-agent-team`, see below |
 | **`verify.py` Stop hook** | manual only | Not shipped enabled: without a test command there is nothing for it to run. Wiring — [hooks/README.md](hooks/README.md) |
 | **Triangulation** | manual only | Needs `agents.config` and external model keys — [docs/models.md](docs/models.md) |

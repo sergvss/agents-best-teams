@@ -103,6 +103,12 @@ def main():
         "risk": risk,
         "what": what,
         "detail": detail,
+        # Удалось ли действие. Хук подключён к двум событиям: PostToolUse
+        # приходит на успех, PostToolUseFailure — на провал. Без второго
+        # журнал видел бы только удавшееся, а для аудита «попытался и не
+        # смог» часто важнее, чем «сделал»: заблокированный force-push и
+        # упавшая на середине миграция не оставляли бы следа вообще.
+        "ok": data.get("hook_event_name") != "PostToolUseFailure",
         # Пусто — значит действие выполнено в главном потоке, а не ролью.
         "agent": data.get("agent_type") or "",
         "tool": data.get("tool_name") or "",

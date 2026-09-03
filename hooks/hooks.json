@@ -72,11 +72,63 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/approval_log.py"
+            ],
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
       {
         "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "fork",
         "hooks": [
           {
             "type": "command",

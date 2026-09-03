@@ -42,8 +42,8 @@ class ApprovalLogTestCase(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def log(self, tool, payload, agent=""):
-        data = {"hook_event_name": "PostToolUse", "tool_name": tool,
+    def log(self, tool, payload, agent="", event="PostToolUse"):
+        data = {"hook_event_name": event, "tool_name": tool,
                 "tool_input": payload, "cwd": self.cwd, "session_id": "abcdef1234"}
         if agent:
             data["agent_type"] = agent
@@ -140,6 +140,36 @@ class TestContract(ApprovalLogTestCase):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.cwd, env=env,
         )
         self.assertEqual(proc.returncode, 0)
+
+
+class TestFailedActionsAreRecordedToo(ApprovalLogTestCase):
+    """
+    Неудавшееся привилегированное действие обязано оставлять след.
+
+    Проверено на живой установке: падающая команда порождает
+    `PostToolUseFailure`, а `PostToolUse` при этом **не приходит**. Пока хук
+    висел только на успехе, журнал видел половину картины — заблокированный
+    force-push и упавшая на середине миграция не оставляли следа вообще,
+    хотя для аудита «попытался и не смог» обычно важнее, чем «сделал».
+    """
+
+    def test_success_is_marked_ok(self):
+        found = self.log("Bash", {"command": "git push origin main"})
+        self.assertEqual(len(found), 1)
+        self.assertIs(found[0]["ok"], True)
+
+    def test_failure_is_recorded_and_marked(self):
+        found = self.log("Bash", {"command": "git push --force origin main"},
+                         event="PostToolUseFailure")
+        self.assertEqual(len(found), 1, "неудавшееся действие не попало в журнал")
+        self.assertIs(found[0]["ok"], False)
+        self.assertEqual(found[0]["what"], "git-push")
+
+    def test_routine_stays_out_even_when_it_fails(self):
+        # Фильтр рутины не должен зависеть от исхода: журнал, куда пишется
+        # всё подряд, читать никто не станет.
+        found = self.log("Bash", {"command": "ls -la"}, event="PostToolUseFailure")
+        self.assertEqual(found, [])
 
 
 if __name__ == "__main__":
