@@ -565,6 +565,33 @@ MESSAGES = {
               "raise it again this session. To silence the prompt for good: create an empty "
               "`.claude/.no-team-setup-prompt` file.",
     },
+    "session.duplicate_install": {
+        "ru": "ВНИМАНИЕ: методология agents-best-teams установлена дважды — плагином и "
+              "копированием в `.claude/hooks/`. Каждый хук срабатывает по два раза.\n\n"
+              "Это не просто шум. Счётчик правила трёх попыток растёт вдвое быстрее, то есть "
+              "повтор блокируется после второй попытки вместо четвёртой; в журнале "
+              "привилегированных действий каждая запись задваивается, и считать по нему "
+              "нельзя. Никаких признаков, кроме этих, поломка не подаёт.\n\n"
+              "Скажи пользователю выбрать одну установку из двух:\n"
+              "  - оставить плагин — удалить `.claude/hooks/` и блок `hooks` из "
+              "`.claude/settings.json`;\n"
+              "  - оставить ручную — снять плагин: `/plugin uninstall agents-best-teams@sergvss`.\n\n"
+              "Сообщи об этом до всего остального: пока дубль не убран, поведение хуков "
+              "отличается от описанного в документации.",
+        "en": "WARNING: the agents-best-teams methodology is installed twice — as a plugin and "
+              "as a copy in `.claude/hooks/`. Every hook fires twice.\n\n"
+              "This is not merely noise. The three-attempts counter grows twice as fast, so a "
+              "retry is blocked after the second attempt instead of the fourth; every entry in "
+              "the privileged-action log is duplicated, making it useless for counting. The "
+              "breakage gives no other sign.\n\n"
+              "Tell the user to pick one of the two installations:\n"
+              "  - keep the plugin — delete `.claude/hooks/` and the `hooks` block from "
+              "`.claude/settings.json`;\n"
+              "  - keep the manual copy — remove the plugin: "
+              "`/plugin uninstall agents-best-teams@sergvss`.\n\n"
+              "Say this before anything else: until the duplicate is gone, the hooks behave "
+              "differently from what the documentation describes.",
+    },
     "session.language_prompt": {
         "ru": "Язык методологии agents-best-teams в этом проекте не выбран: файла "
               "`.claude/.abt-lang` нет, поэтому сообщения защитных хуков сейчас английские "

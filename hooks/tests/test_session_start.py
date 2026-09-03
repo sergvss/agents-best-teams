@@ -125,6 +125,65 @@ class TestContract(SessionStartTestCase):
         self.assertIsNotNone(run_hook(self.cwd))
 
 
+class TestDuplicateInstallation(SessionStartTestCase):
+    """
+    Плагин и ручная копия одновременно.
+
+    Замерено на живой установке: одна команда даёт две записи в журнале, одно
+    падение поднимает счётчик повторов на два — то есть правило трёх попыток
+    превращается в правило двух. Обе установки по отдельности исправны, и
+    никаких других признаков поломка не подаёт, поэтому предупреждение должно
+    быть громким и повторяться, пока дубль не убран.
+    """
+
+    def add_project_copy(self):
+        hooks = os.path.join(self.cwd, ".claude", "hooks")
+        os.makedirs(hooks, exist_ok=True)
+        with open(os.path.join(hooks, "guard.py"), "w", encoding="utf-8") as fh:
+            fh.write("# копия хука в проекте\n")
+
+    def test_warns_when_both_installations_present(self):
+        self.add_project_copy()
+        prompt = run_hook(self.cwd)
+        self.assertIsNotNone(prompt)
+        self.assertIn("agents-best-teams", prompt)
+        self.assertIn(".claude/hooks/", prompt)
+
+    def test_warning_survives_the_opt_out(self):
+        # Опт-аут гасит подсказки, но не сообщение об испорченном поведении:
+        # выключать предупреждение флагом от другой темы неправильно.
+        self.add_project_copy()
+        os.makedirs(os.path.join(self.cwd, ".claude"), exist_ok=True)
+        with open(os.path.join(self.cwd, ".claude", ".no-team-setup-prompt"), "w") as fh:
+            fh.write("")
+        prompt = run_hook(self.cwd)
+        self.assertIsNotNone(prompt, "предупреждение о дубле погашено опт-аутом")
+        self.assertNotIn("setup-agent-team", prompt, "подсказки опт-аут гасить обязан")
+
+    def test_no_warning_for_a_plain_manual_install(self):
+        # Ручная установка — это и есть копия в проекте. Дубля нет.
+        import shutil
+        hooks = os.path.join(self.cwd, ".claude", "hooks")
+        os.makedirs(hooks, exist_ok=True)
+        src = os.path.normpath(os.path.join(os.path.dirname(HOOK)))
+        for name in ("session_start.py", "messages.py", "guard.py"):
+            shutil.copy(os.path.join(src, name), hooks)
+        payload = {"hook_event_name": "SessionStart", "source": "startup", "cwd": self.cwd}
+        proc = subprocess.run(
+            [sys.executable, "-X", "utf8", os.path.join(hooks, "session_start.py")],
+            input=json.dumps(payload).encode("utf-8"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        out = proc.stdout.decode("utf-8").strip()
+        prompt = json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else ""
+        self.assertNotIn("установлена дважды", prompt)
+        self.assertNotIn("installed twice", prompt)
+
+    def test_no_warning_without_a_project_copy(self):
+        prompt = run_hook(self.cwd) or ""
+        self.assertNotIn("installed twice", prompt)
+
+
 class TestLanguagePrompt(SessionStartTestCase):
     """
     Вопрос о языке. Он нужен ровно один раз и не должен превращаться

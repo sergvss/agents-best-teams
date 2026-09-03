@@ -42,6 +42,24 @@ ROLE_NAMES = {
     "vendor-auditor",
 }
 
+def duplicate_installation(cwd):
+    """
+    True, если методология стоит и плагином, и копированием одновременно.
+
+    Тогда каждый хук срабатывает дважды, и это не только шум: счётчик правила
+    трёх попыток растёт вдвое быстрее, а записи журнала задваиваются. Признаков
+    поломка не подаёт никаких — обе установки по отдельности исправны.
+
+    Определяется по тому, откуда запущен этот файл. Если он и есть проектная
+    копия — дубля нет, это обычная ручная установка.
+    """
+    project_hooks = os.path.join(os.path.abspath(cwd or "."), ".claude", "hooks")
+    here = os.path.dirname(os.path.abspath(__file__))
+    if os.path.normcase(here) == os.path.normcase(project_hooks):
+        return False
+    return os.path.exists(os.path.join(project_hooks, "guard.py"))
+
+
 def language_is_chosen(cwd):
     """
     True, если язык сообщений уже задан явно.
@@ -100,18 +118,29 @@ def main():
     cwd = data.get("cwd") or os.getcwd()
     use_project(cwd)
 
-    if os.path.exists(os.path.join(cwd, OPT_OUT)):
-        return 0
-
-    # Два повода заговорить, и оба одноразовые. Язык идёт первым: пока он не
-    # выбран, всё остальное человек читает на умолчании, которое ему могли
-    # и не подобрать.
+    # Дубль установки проверяется до опт-аута и повторяется каждую сессию:
+    # это не подсказка, а испорченное поведение, и молчать о нём нельзя,
+    # пока его не убрали. Остальное — подсказки, их опт-аут гасит.
     parts = []
+    if duplicate_installation(cwd):
+        parts.append(msg("session.duplicate_install"))
+
+    if os.path.exists(os.path.join(cwd, OPT_OUT)):
+        return emit(parts)
+
+    # Ещё два повода заговорить, и оба одноразовые. Язык идёт первым: пока он
+    # не выбран, всё остальное человек читает на умолчании, которое ему могли
+    # и не подобрать.
     if not language_is_chosen(cwd):
         parts.append(msg("session.language_prompt"))
     if not team_is_set_up(cwd):
         parts.append(msg("session.team_setup"))
 
+    return emit(parts)
+
+
+def emit(parts):
+    """Отдаёт накопленные поводы одним additionalContext или молчит."""
     if not parts:
         return 0
 
