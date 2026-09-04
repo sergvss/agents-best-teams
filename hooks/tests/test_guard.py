@@ -332,6 +332,22 @@ class TestAgentMemory(GuardTestCase):
             with self.subTest(blocked=path):
                 self.assertBlocked(edit(path, "Write", "browser-tester"), "browser-tester")
 
+    def test_browser_tester_may_edit_inside_its_own_zone(self):
+        """
+        В своей зоне открыты все инструменты записи, за её пределами — ни один.
+
+        Раньше Edit был закрыт везде, включая E2E, и роль была вынуждена
+        переписывать спек целиком через Write, чтобы поправить одну строку.
+        Правило требовало более разрушительной операции вместо точной —
+        найдено на живом прогоне в песочнице.
+        """
+        for tool in ("Write", "Edit", "MultiEdit"):
+            with self.subTest(tool=tool, zone="своя"):
+                self.assertAllowed(edit("e2e/specs/jump.spec.js", tool, "browser-tester"))
+            with self.subTest(tool=tool, zone="чужая"):
+                self.assertBlocked(edit("client/game/step.js", tool, "browser-tester"),
+                                   "browser-tester")
+
     def test_ignores_agents_outside_matrix(self):
         self.assertAllowed(edit("src/app.py", "Edit", "dev-backend"))
         self.assertAllowed(edit("src/app.py", "Edit", "qa-tester"))

@@ -82,8 +82,8 @@ MEMORY_MATRIX = {
     "unit-economics-analyst": WRITE_TOOLS,
     "investment-analyst": WRITE_TOOLS,
     "vendor-auditor": WRITE_TOOLS,
-    # browser-tester пишет тест-артефакты: Write ограничен зоной E2E ниже,
-    # а Edit продуктового кода ему не положен вовсе.
+    # browser-tester правит тест-артефакты: в зоне E2E ему открыты все
+    # инструменты записи, за её пределами — ни один.
     "browser-tester": {"Edit", "MultiEdit", "Write"},
     "devops": {"Write"},
     "local-sysops": {"Write"},
@@ -483,9 +483,15 @@ def check_memory(tool_name, file_path, agent):
         return
 
     # browser-tester пишет тест-артефакты: спеки, скриншоты, отчёты.
-    if agent == "browser-tester" and tool_name == "Write":
-        if in_browser_tester_zone(path):
-            return
+    #
+    # Внутри своей зоны разрешены и Write, и Edit. Раньше Edit был закрыт
+    # везде, включая E2E, — и это заставляло роль делать худшее из двух:
+    # чтобы поправить одну строку в спеке, приходилось переписывать файл
+    # целиком через Write. Граница зон проводится по файлам, а не по
+    # инструментам: в своей зоне роль работает обычным способом, в чужую
+    # не заходит вовсе.
+    if agent == "browser-tester" and in_browser_tester_zone(path):
+        return
 
     if tool_name not in denied:
         return
