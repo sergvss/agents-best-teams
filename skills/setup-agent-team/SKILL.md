@@ -120,6 +120,7 @@ mkdir -p .claude && printf 'ru\n' > .claude/.abt-lang
 | `<your-project>` | название проекта |
 | `<backend-framework>`, `<frontend-framework>` | реальные фреймворки |
 | `<порт>`, `<ваш-бэк-порт>`, `<ваш-фронт-порт>` | реальные порты |
+| `<каталог-e2e>` | где в проекте лежат браузерные тесты: `e2e/` в корне или `tests/e2e/`. Это же значение определяет зону записи роли в хуке — константа `BROWSER_TESTER_WRITE_SEGMENTS` |
 | `<ваш>`, `<ваша>`, `<ваши>` | выбор из списка рядом |
 | `<reasoning-LLM>`, `<мощный reasoning-LLM>`, `<мощный LLM>`, `<быстрый LLM>` | значение поля `model` |
 | `<your-agent-dir>` | каталог агентов платформы |
@@ -143,7 +144,7 @@ mkdir -p .claude && printf 'ru\n' > .claude/.abt-lang
 **Проверка шага:**
 
 ```bash
-grep -rEn '<your-[a-z-]+>|<ваш[а-и]?>|<ваш-[а-яa-z-]+>|<backend-framework>|<frontend-framework>|<порт>|<reasoning-LLM[^>]*>|<быстрый[^>]*>|<мощный[^>]*>' .claude/agents/
+grep -rEn '<your-[a-z-]+>|<ваш[а-и]?>|<ваш-[а-яa-z-]+>|<backend-framework>|<frontend-framework>|<порт>|<reasoning-LLM[^>]*>|<быстрый[^>]*>|<мощный[^>]*>|<каталог-e2e>' .claude/agents/
 grep -rn 'Опиши здесь\|Примеры типичных\|Укажи здесь' .claude/agents/
 ```
 
