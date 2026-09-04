@@ -351,24 +351,54 @@ def is_null_device(target):
     return target.strip('"\'').lower().lstrip("/") in ("dev/null", "nul")
 
 
+# Опции sed, задающие скрипт замены. Могут прийти слитно (`-es/a/b/`,
+# `--expression=...`) или отдельным токеном — второе разбирается иначе.
+SED_SCRIPT_OPTIONS = ("-e", "-f", "--expression", "--file")
+
+
 def sed_file_arguments(args):
     """
     Файловые аргументы `sed -i` без самого скрипта замены.
 
-    Скрипт — первый позиционный аргумент, если он не пришёл через -e или -f.
-    Отличить его от имени файла надёжнее всего по этому правилу, а не по виду:
-    имя файла тоже может содержать слэши.
+    Скрипт приходит одним из трёх способов, и различать их надо по способу,
+    а не по виду: имя файла тоже может содержать слэши.
+
+    - первым позиционным аргументом: `sed -i s/a/b/ файл`;
+    - слитно с опцией: `sed -i -es/a/b/ файл`, `--expression=s/a/b/`;
+    - ОТДЕЛЬНЫМ токеном после опции: `sed -i -e s/a/b/ файл`.
+
+    Третий случай и был дырой. Прежняя версия отбирала позиционные как «всё,
+    что не начинается с дефиса», и при встрече -e/-f считала файлами все
+    позиционные разом. Но скрипт после отдельного `-e` с дефиса не
+    начинается — он попадал в позиционные и возвращался как цель записи.
+    Роль получала «пытается записать s/a/b/» и не могла править даже
+    собственную папку памяти.
+
+    Это тот же дефект, что чинился для простой формы: тогда проверили ту
+    форму, которая вспомнилась. Здесь опция скрипта, пришедшая отдельным
+    токеном, забирает следующий аргумент — он скрипт, а не файл.
+
+    Ложное срабатывание тут дороже пропуска: пропуск ловится правилом зоны
+    на следующем аргументе, а ложный запрет останавливает работу роли на
+    ровном месте — и такой хук отключают в первый же день (принцип 09).
     """
-    positional = [a for a in args if not a.startswith("-")]
-    if not positional:
-        return []
-    # -e/-f задают скрипт отдельно, тогда все позиционные — файлы.
-    script_given_separately = any(
-        a.startswith("-e") or a.startswith("-f") or a.startswith("--expression")
-        or a.startswith("--file")
-        for a in args
-    )
-    return positional if script_given_separately else positional[1:]
+    files = []
+    script_given_by_option = False
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in SED_SCRIPT_OPTIONS:
+            script_given_by_option = True
+            skip_next = True
+            continue
+        if arg.startswith("-"):
+            if arg.startswith(SED_SCRIPT_OPTIONS):
+                script_given_by_option = True
+            continue
+        files.append(arg)
+    return files if script_given_by_option else files[1:]
 
 
 def written_paths(tokens):

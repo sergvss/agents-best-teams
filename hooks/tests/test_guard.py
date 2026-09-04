@@ -467,6 +467,30 @@ class TestAgentMemory(GuardTestCase):
         self.assertIn("src/app.py", reason, "в тексте блокировки не тот путь")
         self.assertNotIn("s/a/b/", reason, "скрипт sed принят за файл")
 
+    def test_sed_script_after_e_flag_is_not_a_file(self):
+        # Тот же дефект, что и выше, но в форме `-e скрипт` отдельным токеном:
+        # скрипт не начинается с дефиса, попадал в позиционные и объявлялся
+        # целью записи. Простую форму починили, эту — нет.
+        memory = ".claude/agent-memory/devops/MEMORY.md"
+        for command in (
+            "sed -i -e s/a/b/ " + memory,
+            "sed -i -e s/x/y/ -e s/a/b/ " + memory,
+            "sed -i --expression=s/a/b/ " + memory,
+            "sed -i -f fix.sed " + memory,
+        ):
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command, "devops"))
+        # Запрет при этом обязан остаться: форма разбора изменилась,
+        # зона роли — нет.
+        reason = run_hook(bash("sed -i -e s/a/b/ src/app.py", "code-reviewer"))
+        self.assertIsNotNone(reason)
+        self.assertIn("src/app.py", reason, "в тексте блокировки не тот путь")
+        self.assertNotIn("s/a/b/", reason, "скрипт sed принят за файл")
+        # Скрипт из файла (-f) читается, а не пишется: целью он быть не может.
+        reason = run_hook(bash("sed -i -f fix.sed src/app.py", "code-reviewer"))
+        self.assertIsNotNone(reason)
+        self.assertNotIn("fix.sed", reason, "файл скрипта принят за цель записи")
+
     def test_shell_half_follows_the_same_matrix_as_the_tool_half(self):
         """
         Одно действие разными руками решается одинаково.
