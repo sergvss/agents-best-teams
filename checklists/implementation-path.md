@@ -62,7 +62,7 @@
 
 **Tier 2:**
 - [ ] `code-reviewer` (PRIMARY) — если security / RBAC / API-контракт / миграции
-- [ ] При необходимости — + SIDE-A (одна внешняя модель из `agents.config`)
+- [ ] Если задача из списка выше — **+ SIDE-A** (одна внешняя модель из `agents.config`). Не «при необходимости»: для security, RBAC, API-контракта и миграций второе независимое мнение обязательно. SIDE-B на Tier 2 не запускается — обоснование в `../principles/04-orchestration-budgets.md`
 
 **Tier 3:**
 - [ ] `code-reviewer` (PRIMARY) — обязательно
