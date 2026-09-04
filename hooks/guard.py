@@ -110,6 +110,21 @@ MEMORY_MATRIX = {
 BROWSER_TESTER_WRITE_SEGMENTS = ("e2e",)
 
 
+def in_own_memory(path, agent):
+    """
+    Своя папка памяти роли — при любом значении поля `memory`.
+
+    Вариант `local` кладёт её в `.claude/agent-memory-local/`, и хук, знавший
+    только `agent-memory`, блокировал роль в её собственной памяти. Значение
+    описано в `principles/06-memory-hygiene.md`, то есть пользователь имел
+    полное право его выбрать.
+    """
+    return any(
+        "/.claude/{}/{}/".format(directory, agent) in path
+        for directory in ("agent-memory", "agent-memory-local")
+    )
+
+
 def in_browser_tester_zone(path):
     """True, если путь лежит внутри каталога E2E-тестов."""
     return any(part.lower() in BROWSER_TESTER_WRITE_SEGMENTS
@@ -246,6 +261,31 @@ def is_protected_env(path):
 # ---------------------------------------------------------------------------
 # Правило fs — деструктив файловой системы
 # ---------------------------------------------------------------------------
+def is_null_device(target):
+    """Устройство-пустышка: запись туда ничего не сохраняет."""
+    return target.strip('"\'').lower().lstrip("/") in ("dev/null", "nul")
+
+
+def sed_file_arguments(args):
+    """
+    Файловые аргументы `sed -i` без самого скрипта замены.
+
+    Скрипт — первый позиционный аргумент, если он не пришёл через -e или -f.
+    Отличить его от имени файла надёжнее всего по этому правилу, а не по виду:
+    имя файла тоже может содержать слэши.
+    """
+    positional = [a for a in args if not a.startswith("-")]
+    if not positional:
+        return []
+    # -e/-f задают скрипт отдельно, тогда все позиционные — файлы.
+    script_given_separately = any(
+        a.startswith("-e") or a.startswith("-f") or a.startswith("--expression")
+        or a.startswith("--file")
+        for a in args
+    )
+    return positional if script_given_separately else positional[1:]
+
+
 def written_paths(tokens):
     """
     Пути, в которые сегмент команды пишет: цели перенаправления и аргументы
@@ -254,7 +294,21 @@ def written_paths(tokens):
     targets = []
     for index, token in enumerate(tokens):
         if token in (">", ">>", ">|", "&>", ">&") and index + 1 < len(tokens):
-            targets.append(tokens[index + 1])
+            target = tokens[index + 1]
+            # `2>&1` — дублирование дескриптора, а не файл, и `> /dev/null`
+            # ничего не сохраняет. Считать их записью значило блокировать
+            # `npm test 2>&1` и `ls > /dev/null` у тринадцати ролей матрицы,
+            # то есть мешать обычной работе. Хук, который мешает, отключают.
+            #
+            # Разбор режет `2>&1` на `2`, `>&`, `1`: амперсанд уходит в
+            # оператор, и целью остаётся голый номер дескриптора.
+            if is_null_device(target):
+                continue
+            if target.startswith("&"):
+                continue
+            if token in (">&", "&>") and target.isdigit():
+                continue
+            targets.append(target)
 
     if not tokens:
         return targets
@@ -262,13 +316,47 @@ def written_paths(tokens):
     args = [t for t in tokens[1:] if t not in (">", ">>", ">|", "&>", ">&", "<")]
 
     if command == "sed" and any(a.startswith("-i") for a in args):
-        targets += [a for a in args if not a.startswith("-")]
+        # Первый непозиционный аргумент sed — сам скрипт замены, а не файл:
+        # без этого `sed -i s/a/b/ file` читалось как «пишет в s/a/b/», и роль
+        # не могла править даже собственную папку памяти.
+        targets += sed_file_arguments(args)
     elif command in ("rm", "tee", "truncate", "shred", "unlink", "touch", "mkdir"):
         targets += [a for a in args if not a.startswith("-")]
     elif command in ("mv", "cp", "install"):
         positional = [a for a in args if not a.startswith("-")]
         targets += positional[-1:] if len(positional) > 1 else []
     return targets
+
+
+def modifies_existing(tokens, target):
+    """
+    Правит ли команда существующий файл, а не создаёт новый.
+
+    Различие нужно ровно там, где его делает матрица: devops и local-sysops
+    правят существующее, но не создают. `sed -i` и `tee -a` — правка;
+    `>` и `tee` без `-a` создают или обнуляют, то есть равны созданию.
+    """
+    if not tokens:
+        return False
+
+    # Дописывание через оператор: `>> файл`. Форма равнозначна `tee -a`,
+    # и обе разбираются одинаково — иначе роль, которой можно дописать в
+    # CHANGELOG одним способом, не может тем же действием другим.
+    for index, token in enumerate(tokens[:-1]):
+        if token == ">>" and tokens[index + 1] == target:
+            return True
+
+    command = basename(tokens[0])
+    if command == "sed":
+        return any(a.startswith("-i") for a in tokens[1:])
+    if command == "tee":
+        return any(a in ("-a", "--append") for a in tokens[1:])
+
+    # Остальное — создание или обнуление. Если дописывают в несуществующий
+    # файл, он появится: отличить это хук не может, потому что смотрит на
+    # команду, а не на диск. Послабление касается двух ролей, чья работа и
+    # состоит в правке существующих релизных файлов.
+    return False
 
 
 def check_memory_bash(tokens, agent):
@@ -279,16 +367,25 @@ def check_memory_bash(tokens, agent):
     заблокирован, а `cat > файл` пишет тот же файл мимо проверки. Хуже того,
     платформа после блокировки Write сама предлагает агенту перейти на Bash.
     """
-    if not agent or agent not in MEMORY_MATRIX:
+    denied = MEMORY_MATRIX.get(agent)
+    if not agent or denied is None:
         return
+
+    # Роль, которой запрещено только создание файлов (devops, local-sysops),
+    # правит существующие — и через оболочку тоже. Без этой проверки половины
+    # правила расходились: `Edit CHANGELOG.md` проходил, а `sed -i` по тому же
+    # файлу блокировался, хотя это одно и то же действие разными руками.
+    edits_existing_files_allowed = not (denied & {"Edit", "MultiEdit"})
 
     for target in written_paths(tokens):
         # lstrip("./") здесь недопустим: он снимает не префикс, а любые символы
         # из набора, и съедает точку у .claude, ломая проверку своей же зоны.
         path = "/" + posixpath.normpath(target.strip("\"'").replace("\\", "/")).lstrip("/")
-        if "/.claude/agent-memory/{}/".format(agent) in path:
+        if in_own_memory(path, agent):
             continue
         if agent == "browser-tester" and in_browser_tester_zone(path):
+            continue
+        if edits_existing_files_allowed and modifies_existing(tokens, target):
             continue
         deny(msg(
             "memory.shell_write",
@@ -453,12 +550,13 @@ def _check_sql_statement(flat):
     if re.search(r"\bupdate\s+[a-z_][\w.]*\s+set\b", flat, re.I) and not has_where:
         deny(msg("sql.update_no_where"))
 
-    # DROP не только у таблиц: индекс, представление, последовательность и
-    # особенно `ALTER TABLE ... DROP COLUMN` уничтожают данные ровно так же.
-    # Раньше правило ловило три формы из перечисленных, а таблица в hooks/README
-    # обещала «DROP» без оговорок — обещание было шире проверки.
+    # DROP любого объекта, а не перечисленных видов: MATERIALIZED VIEW,
+    # FUNCTION, TRIGGER, ROLE, EXTENSION уничтожают не меньше таблицы.
+    # Закрытый список дважды оказывался уже обещания в документации — сначала
+    # на трёх формах, потом на девяти. Перечисление проигрывает здесь по той
+    # же причине, что и в матрице разрешений: список забывают дополнить.
     if re.search(
-        r"\b(drop\s+(database|schema|table|index|view|sequence|type|column|constraint)"
+        r"\b(drop\s+(?:if\s+exists\s+)?(?:materialized\s+)?[a-z_]+"
         r"|alter\s+table\b[^;]*\bdrop\b"
         r"|truncate\b)",
         flat, re.I,
@@ -497,7 +595,7 @@ def check_memory(tool_name, file_path, agent):
     path = "/" + posixpath.normpath(file_path.replace("\\", "/")).lstrip("/")
 
     # Собственная папка памяти — всегда разрешена, ради неё правило и существует.
-    if "/.claude/agent-memory/{}/".format(agent) in path:
+    if in_own_memory(path, agent):
         return
 
     # browser-tester пишет тест-артефакты: спеки, скриншоты, отчёты.

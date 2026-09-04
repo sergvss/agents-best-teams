@@ -19,7 +19,7 @@
    # Подставь свою agents-директорию: .claude/agents/ для Claude Code,
    # .cursor/rules/ для Cursor, ~/.codex/skills/.../ для Codex, и т.д.
    AGENTS_DIR=".claude/agents"   # ← поменяй под свою платформу
-   grep -rEn '<your-[a-z-]+>|<ваш[а-и]?>|<ваш-[а-яa-z-]+>|<backend-framework>|<frontend-framework>|<порт>|<reasoning-LLM[^>]*>|<быстрый[^>]*>|<мощный[^>]*>|<каталог-e2e>|<пути [^>]*>' "$AGENTS_DIR"
+   grep -rEn '<your-[a-z-]+>|<ваш[а-и]?>|<ваш-[а-яa-z-]+>|<backend-framework>|<frontend-framework>|<порт>|<reasoning-LLM[^>]*>|<быстрый[^>]*>|<мощный[^>]*>|<каталог-e2e>|<пути [^>]*>|<[^>]*reasoning[^>]*>|<[^>]*LLM[^>]*>' "$AGENTS_DIR"
    # должно вернуть пусто — все плейсхолдеры заменены
    ```
 

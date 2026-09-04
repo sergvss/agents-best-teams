@@ -212,6 +212,21 @@ class TestSql(GuardTestCase):
             with self.subTest(command=command):
                 self.assertBlocked(bash(command), "P/Privileged")
 
+    def test_drop_is_not_a_closed_list_of_object_kinds(self):
+        # Закрытый список дважды оказывался уже обещания в документации:
+        # сначала три формы, потом девять. MATERIALIZED VIEW, FUNCTION,
+        # TRIGGER, ROLE и EXTENSION уничтожают не меньше таблицы.
+        for command in [
+            'psql -c "DROP MATERIALIZED VIEW mv_daily"',
+            'psql -c "DROP FUNCTION calc_total()"',
+            'psql -c "DROP TRIGGER audit ON users"',
+            'psql -c "DROP ROLE reporting"',
+            'psql -c "DROP EXTENSION postgis"',
+            'psql -c "DROP TABLE IF EXISTS legacy"',
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
     def test_non_destructive_ddl_still_passes(self):
         # Расширение правила не должно превратить его в запрет на DDL вообще:
         # хук, мешающий обычной работе, отключают целиком.
@@ -324,6 +339,21 @@ class TestAgentMemory(GuardTestCase):
                 self.assertAllowed(edit(path, "Write", agent))
                 self.assertAllowed(edit(path, "Edit", agent))
 
+    def test_local_memory_variant_is_recognised(self):
+        # principles/06 перечисляет `memory: local` с путём
+        # `.claude/agent-memory-local/`, а хук знал только `agent-memory` —
+        # и блокировал роль в её собственной папке памяти. Документированный
+        # вариант обязан работать, иначе документация обещает несуществующее.
+        for agent in ("code-reviewer", "devops", "investigator"):
+            path = ".claude/agent-memory-local/{}/MEMORY.md".format(agent)
+            with self.subTest(agent=agent):
+                self.assertAllowed(edit(path, "Write", agent))
+        # Чужая папка остаётся закрытой в обоих вариантах.
+        self.assertBlocked(
+            edit(".claude/agent-memory-local/devops/MEMORY.md", "Write", "code-reviewer"),
+            "code-reviewer",
+        )
+
     def test_does_not_allow_foreign_memory_directory(self):
         # Роль не должна писать в память чужой роли.
         self.assertBlocked(
@@ -403,6 +433,55 @@ class TestAgentMemory(GuardTestCase):
                 if "Write" in denied:
                     self.assertIn("NotebookEdit", denied,
                                   "у роли запрещён Write, но разрешён NotebookEdit")
+
+    def test_redirects_to_descriptors_and_null_are_not_writes(self):
+        """
+        `2>&1` и `> /dev/null` — не запись в файл.
+
+        Считать их записью значило блокировать `npm test 2>&1` и
+        `ls > /dev/null` у всех тринадцати ролей матрицы, то есть мешать
+        обычной работе. Прежний тест «обычные команды не блокируются»
+        подобрал три примера без единого перенаправления и дыру пропустил.
+        """
+        for agent in ("devops", "code-reviewer", "pm-orchestrator", "browser-tester"):
+            for command in ("npm test 2>&1", "pytest -q > /dev/null",
+                            "ls -la > /dev/null", "git status 2>/dev/null",
+                            "make build > /dev/null 2>&1"):
+                with self.subTest(agent=agent, command=command):
+                    self.assertAllowed(bash(command, agent))
+        # Настоящий файл через тот же оператор блокировать по-прежнему обязан.
+        self.assertBlocked(bash("echo x &> src/app.py", "code-reviewer"), "code-reviewer")
+
+    def test_sed_script_is_not_a_file(self):
+        # `sed -i s/a/b/ файл` читалось как «пишет в s/a/b/»: роль не могла
+        # править даже собственную папку памяти. Ассерт проверяет путь,
+        # а не только имя роли, — прежний на это и попался.
+        allowed = "sed -i s/a/b/ .claude/agent-memory/devops/MEMORY.md"
+        self.assertAllowed(bash(allowed, "devops"))
+        reason = run_hook(bash("sed -i s/a/b/ src/app.py", "code-reviewer"))
+        self.assertIsNotNone(reason)
+        self.assertIn("src/app.py", reason, "в тексте блокировки не тот путь")
+        self.assertNotIn("s/a/b/", reason, "скрипт sed принят за файл")
+
+    def test_shell_half_follows_the_same_matrix_as_the_tool_half(self):
+        """
+        Одно действие разными руками решается одинаково.
+
+        Bash-половина не читала MEMORY_MATRIX и была строже: `Edit CHANGELOG.md`
+        у devops проходил, а `sed -i` по тому же файлу блокировался. Роли,
+        которой запрещено только создание, правка существующего разрешена —
+        и через оболочку тоже.
+        """
+        for command in ("sed -i s/x/y/ CHANGELOG.md", "tee -a CHANGELOG.md",
+                        "echo x >> CHANGELOG.md"):
+            with self.subTest(command=command, expect="как Edit"):
+                self.assertAllowed(bash(command, "devops"))
+        for command in ("echo x > CHANGELOG.md", "tee CHANGELOG.md"):
+            with self.subTest(command=command, expect="как Write"):
+                self.assertBlocked(bash(command, "devops"), "devops")
+        # Роли с полным запретом записи правка существующего не открывается.
+        self.assertBlocked(bash("sed -i s/x/y/ CHANGELOG.md", "code-reviewer"),
+                           "code-reviewer")
 
     def test_ignores_agents_outside_matrix(self):
         self.assertAllowed(edit("src/app.py", "Edit", "dev-backend"))
