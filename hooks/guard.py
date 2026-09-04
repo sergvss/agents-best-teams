@@ -82,14 +82,29 @@ MEMORY_MATRIX = {
     "unit-economics-analyst": WRITE_TOOLS,
     "investment-analyst": WRITE_TOOLS,
     "vendor-auditor": WRITE_TOOLS,
-    # browser-tester пишет тест-артефакты: Write ограничен зоной tests/ ниже,
+    # browser-tester пишет тест-артефакты: Write ограничен зоной E2E ниже,
     # а Edit продуктового кода ему не положен вовсе.
     "browser-tester": {"Edit", "MultiEdit", "Write"},
     "devops": {"Write"},
     "local-sysops": {"Write"},
 }
 
-BROWSER_TESTER_WRITE_DIRS = ("/tests/", "/test/")
+# Зона записи browser-tester: каталог E2E, как бы он ни лежал — `e2e/` в корне
+# или `tests/e2e/`. Сравнение посегментное, а не по подстроке, и это важно:
+# подстрока «/tests/» пускала роль в `backend/tests/conftest.py`, то есть в
+# юнит-тесты, которыми владеет qa-tester, и при этом не пускала в `e2e/specs/` —
+# раскладку, где E2E лежит в корне. Правило было неверно в обе стороны сразу.
+#
+# Каталог с другим именем (`cypress/`, `playwright/`) сюда не попадает
+# намеренно: лучше заблокировать и объяснить, чем угадывать. Это константа
+# под проект, как MEMORY_MATRIX и DB_CLIENTS.
+BROWSER_TESTER_WRITE_SEGMENTS = ("e2e",)
+
+
+def in_browser_tester_zone(path):
+    """True, если путь лежит внутри каталога E2E-тестов."""
+    return any(part.lower() in BROWSER_TESTER_WRITE_SEGMENTS
+               for part in path.split("/"))
 
 
 def deny(reason, ask=True):
@@ -264,7 +279,7 @@ def check_memory_bash(tokens, agent):
         path = "/" + posixpath.normpath(target.strip("\"'").replace("\\", "/")).lstrip("/")
         if "/.claude/agent-memory/{}/".format(agent) in path:
             continue
-        if agent == "browser-tester" and any(d in path for d in BROWSER_TESTER_WRITE_DIRS):
+        if agent == "browser-tester" and in_browser_tester_zone(path):
             continue
         deny(msg(
             "memory.shell_write",
@@ -469,7 +484,7 @@ def check_memory(tool_name, file_path, agent):
 
     # browser-tester пишет тест-артефакты: спеки, скриншоты, отчёты.
     if agent == "browser-tester" and tool_name == "Write":
-        if any(d in path for d in BROWSER_TESTER_WRITE_DIRS):
+        if in_browser_tester_zone(path):
             return
 
     if tool_name not in denied:

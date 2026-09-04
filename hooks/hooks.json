@@ -13,7 +13,7 @@
               "fs,git,sql,env,memory"
             ],
             "timeout": 10,
-            "statusMessage": "Проверка команды защитными хуками"
+            "statusMessage": "Checking the command against the protective hooks"
           },
           {
             "type": "command",
@@ -22,7 +22,7 @@
               "${CLAUDE_PLUGIN_ROOT}/hooks/retry_guard.py"
             ],
             "timeout": 15,
-            "statusMessage": "Проверка правила трёх попыток"
+            "statusMessage": "Checking the three-attempts rule"
           }
         ]
       },
@@ -38,7 +38,7 @@
               "env,memory"
             ],
             "timeout": 10,
-            "statusMessage": "Проверка пути защитными хуками"
+            "statusMessage": "Checking the path against the protective hooks"
           }
         ]
       }

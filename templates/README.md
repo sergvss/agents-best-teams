@@ -8,7 +8,7 @@
 
 ## Кто делает
 
-Есть Edit и Write, правят код в своей зоне.
+Правят код в своей зоне. Полный набор Edit и Write не у всех: `devops` и `local-sysops` меняют только существующие файлы (без Write), `browser-tester` пишет тест-артефакты, но продуктовый код не правит (без Edit). Точная матрица — [`checklists/permission-checklist.md`](../checklists/permission-checklist.md).
 
 | Роль | Зона |
 |---|---|

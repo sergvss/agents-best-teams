@@ -21,7 +21,9 @@ description: Context management in an agent team - what to pass into a subtask, 
 
 **Что писать в память:** то, что дорого было узнать и глупо узнавать снова. Не то, что есть в коде, в `git log` или в README.
 
-Полный текст с шаблоном передачи работы, признаками переполнения контекста и правилами сжатия:
+Полный текст с признаками переполнения контекста и правилами сжатия:
 `${CLAUDE_PLUGIN_ROOT}/checklists/context-checklist.md`
+
+Сам шаблон передачи работы лежит не там, а в роли оркестратора — раздел «HANDOFF-шаблон ТЗ» в `${CLAUDE_PLUGIN_ROOT}/templates/pm-orchestrator.md`. Чек-лист его только называет.
 
 Если методология установлена копированием — файл лежит в `checklists/context-checklist.md` репозитория.

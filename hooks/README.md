@@ -42,7 +42,7 @@
 | `unit-economics-analyst` | только своя папка памяти |
 | `investment-analyst` | только своя папка памяти |
 | `vendor-auditor` | только своя папка памяти |
-| `browser-tester` | своя папка памяти и тест-артефакты в `tests/` |
+| `browser-tester` | своя папка памяти и E2E-каталог — только через `Write`; `Edit` там тоже заблокирован |
 | `devops` | своя папка памяти; `Edit` существующих файлов не ограничен |
 | `local-sysops` | своя папка памяти; `Edit` существующих файлов не ограничен |
 
@@ -61,9 +61,11 @@
 ### Вручную
 
 ```bash
-# 1. Скопируй скрипт в свой проект
+# 1. Скопируй скрипты в свой проект — все, а не только guard.py:
+#    конфигурация ссылается на четыре хука, а messages.py нужен каждому,
+#    без него guard.py падает с ModuleNotFoundError ещё до первой проверки.
 mkdir -p /path/to/your-project/.claude/hooks
-cp hooks/guard.py /path/to/your-project/.claude/hooks/
+cp hooks/*.py /path/to/your-project/.claude/hooks/
 
 # 2. Подключи хуки в настройках проекта
 #    Если .claude/settings.json уже есть — перенеси в него блок "hooks",
@@ -108,7 +110,20 @@ python3 --version   # если работает — поменяй "command" н�
 python --version    # если работает это — оставь как есть
 ```
 
-Поле `command` правится в обоих блоках `PreToolUse` — в `hooks.json` при установке плагином и в `settings.example.json` при ручной установке.
+Менять нужно **все вхождения**, а не только первое: в каждой конфигурации их десять, и они разбросаны по всем событиям. Поправишь один блок — `guard.py` заработает, а журнал, счётчик повторов и подсказка при старте останутся молчать, и это ничем себя не проявит.
+
+```bash
+# ручная установка
+sed -i 's/"command": "python"/"command": "python3"/g' .claude/settings.json
+```
+
+```powershell
+# то же в PowerShell
+(Get-Content .claude\settings.json) -replace '"command": "python"', '"command": "python3"' |
+  Set-Content .claude\settings.json -Encoding utf8
+```
+
+При установке плагином правится `hooks.json` внутри каталога плагина — но правку затрёт следующее обновление. Надёжнее задать `python3` доступным как `python`, например через `alias` в профиле оболочки или ссылку в `PATH`.
 
 ---
 
@@ -217,7 +232,7 @@ python -c "import json,sys;[print(e['at'],e['risk'],e['agent'] or 'main',e['deta
 
 Хук на `PostToolUse` не может ничего заблокировать и не должен: даже собственная ошибка записи не прерывает работу, а уходит в stderr.
 
-Отключается удалением блока `PostToolUse` из конфигурации.
+Отключается удалением **обоих** блоков — `PostToolUse` и `PostToolUseFailure`. Убрать только первый недостаточно: записи о неудавшихся действиях, с текстами команд, продолжат идти в журнал.
 
 ---
 

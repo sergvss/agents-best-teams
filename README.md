@@ -89,7 +89,7 @@ Not everything starts working the moment you install. The precise picture:
 
 **Activation comes first.** After installing, Claude Code prints either `Plugin is now active.` or `Run /reload-plugins to activate.` In the second case nothing works until you run that command.
 
-**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. One line fixes it, see [hooks/README.md](hooks/README.md).
+**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are ten of them per configuration file, and fixing one block leaves the log, the retry counter and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
 
 ### The roles need a separate step
 
@@ -215,6 +215,10 @@ docs/          Install, update, model configuration, first run,
                concepts.en.md — the terms, in English
 
 .claude-plugin/  Plugin and marketplace manifests
+
+EXAMPLES.md    Every principle as a "bad → good" pair
+CHANGELOG.md   Release history
+VERSION        Current version, checked against the manifest in CI
 ```
 
 > Only `hooks/`, `skills/` and `.claude-plugin/` are tied to Claude Code. Everything else is provider-neutral.

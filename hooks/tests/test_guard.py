@@ -313,6 +313,25 @@ class TestAgentMemory(GuardTestCase):
         # browser-tester пишет тест-артефакты.
         self.assertAllowed(edit("tests/e2e/login.spec.js", "Write", "browser-tester"))
 
+    def test_browser_tester_zone_is_e2e_not_any_tests_directory(self):
+        """
+        Зона browser-tester определяется сегментом пути, а не подстрокой.
+
+        Проверка подстрокой «/tests/» была неверна сразу в обе стороны:
+        пускала роль в `backend/tests/conftest.py`, то есть в юнит-тесты
+        чужой зоны, и не пускала в `e2e/specs/` — раскладку, где E2E лежит
+        в корне, как в нашей же песочнице. Второе опаснее: хук мешал роли
+        делать её собственную работу, а такой хук отключают в первый день.
+        """
+        for path in ("tests/e2e/specs/login.spec.js", "e2e/specs/collision.spec.js",
+                     "e2e/helpers/game.js", "E2E/report.json"):
+            with self.subTest(allowed=path):
+                self.assertAllowed(edit(path, "Write", "browser-tester"))
+        for path in ("backend/tests/conftest.py", "server/tests/test_api.py",
+                     "client/tests/step.test.js"):
+            with self.subTest(blocked=path):
+                self.assertBlocked(edit(path, "Write", "browser-tester"), "browser-tester")
+
     def test_ignores_agents_outside_matrix(self):
         self.assertAllowed(edit("src/app.py", "Edit", "dev-backend"))
         self.assertAllowed(edit("src/app.py", "Edit", "qa-tester"))

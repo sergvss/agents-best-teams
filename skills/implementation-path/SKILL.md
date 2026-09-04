@@ -1,6 +1,6 @@
 ---
 name: implementation-path
-description: The path from task to commit - the sequence of implementation steps with a check at each one. Use when carrying out a task of Tier 2 or above, where the work must reach a verified and committed result rather than just written code.
+description: The path from task to commit - the sequence of implementation steps with a check at each one. Use when carrying out a task of Tier 2 or above, where the work must reach a verified result rather than just written code. The commit itself is a separate step, taken only when the user asks for it.
 ---
 
 # Путь от задачи до коммита
@@ -12,7 +12,7 @@ description: The path from task to commit - the sequence of implementation steps
 3. **Реализовать** — минимум кода, решающий задачу. Только то, что напрямую следует из запроса.
 4. **Проверить** — тесты, а не «выглядит правильно». На баг сначала пишется тест, воспроизводящий его.
 5. **Отревьюить** — свежим взглядом или отдельной ролью. Своя правка всегда кажется понятной.
-6. **Зафиксировать** — коммит с осмысленным сообщением, описывающим зачем, а не что.
+6. **Зафиксировать — только если попросили.** Коммит не входит в «довести до готовности»: запись в историю репозитория делается по просьбе пользователя, а не по факту того, что тесты позеленели. Попросили — сообщение описывает зачем, а не что.
 
 На каждом шаге действует правило хирургических правок: каждая изменённая строка должна прямо следовать из запроса. Не «улучшай» соседний код заодно.
 
