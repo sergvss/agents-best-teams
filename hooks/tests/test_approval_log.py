@@ -68,6 +68,13 @@ class TestWhatGetsLogged(ApprovalLogTestCase):
             # Force-push переписывает историю: P, а не W как обычный push.
             ("git push --force origin main", "P"),
             ("git push origin +main", "P"),
+            ("git push origin --delete feature", "P"),
+            ("git push origin :feature", "P"),
+            # Хук сам предлагает --force-with-lease как безопасную замену
+            # и пропускает её. Метить рекомендованную альтернативу классом
+            # запрещённого действия - самопротиворечивость из principles/09.
+            ("git push --force-with-lease origin main", "W"),
+            ("git push origin main:main", "W"),
             ("chmod 600 key.pem", "P"),
             ("cat .env", "P"),
         ]:
@@ -174,7 +181,7 @@ class TestFailedActionsAreRecordedToo(ApprovalLogTestCase):
         # Заблокированная попытка попадает в журнал именно этим путём, и
         # записать её мягким классом значит занизить риск там, где точность
         # и нужна: в журнале того, что агент пытался сделать.
-        self.assertEqual(found[0]["what"], "git-push-force")
+        self.assertEqual(found[0]["what"], "git-push-destructive")
         self.assertEqual(found[0]["risk"], "P")
 
     def test_routine_stays_out_even_when_it_fails(self):
@@ -182,6 +189,70 @@ class TestFailedActionsAreRecordedToo(ApprovalLogTestCase):
         # всё подряд, читать никто не станет.
         found = self.log("Bash", {"command": "ls -la"}, event="PostToolUseFailure")
         self.assertEqual(found, [])
+
+
+class TestJournalAgreesWithTheHook(unittest.TestCase):
+    """
+    По формам git push журнал и хук обязаны говорить одно и то же.
+
+    Расходились они дважды и в обе стороны: сначала журнал метил
+    force-push мягким W, потом - после починки - метил жёстким P и
+    `--force-with-lease`, который хук сам предлагает как безопасную замену.
+    Инвариант проверяет обе стороны сразу, а не ту, что вспомнилась.
+    """
+
+    GUARD = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "guard.py")
+
+    # Что хук блокирует, то журнал обязан писать классом P; что пропускает -
+    # классом ниже. Формы взяты по смыслу: +ветка это force, :ветка - удаление.
+    FORMS = [
+        "git push --force origin main",
+        "git push -f",
+        "git push origin +main",
+        "git push --mirror origin",
+        "git push origin --delete feature",
+        "git push origin :feature",
+        "git push --force-with-lease origin main",
+        "git push origin main",
+        "git push origin main:main",
+        "git push -u origin feature",
+        "git push --follow-tags",
+    ]
+
+    def hook_blocks(self, command):
+        payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": "."}
+        proc = subprocess.run(
+            [sys.executable, "-X", "utf8", self.GUARD],
+            input=json.dumps(payload).encode("utf-8"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        if proc.returncode == 2:
+            return True
+        out = proc.stdout.decode("utf-8").strip()
+        if not out:
+            return False
+        decision = json.loads(out)["hookSpecificOutput"].get("permissionDecision")
+        return decision == "deny"
+
+    def journal_risk(self, command):
+        sys.path.insert(0, os.path.normpath(os.path.dirname(self.GUARD)))
+        import approval_log
+        found = approval_log.classify({"tool_name": "Bash",
+                                       "tool_input": {"command": command}})
+        return found[0] if found else None
+
+    def test_blocked_pushes_are_privileged_and_allowed_ones_are_not(self):
+        for command in self.FORMS:
+            blocked = self.hook_blocks(command)
+            risk = self.journal_risk(command)
+            with self.subTest(command=command, blocked=blocked):
+                if blocked:
+                    self.assertEqual(risk, "P",
+                                     "хук блокирует, журнал обязан писать P")
+                else:
+                    self.assertNotEqual(risk, "P",
+                                        "хук пропускает - P завышает риск и "
+                                        "обесценивает метку там, где она нужна")
 
 
 if __name__ == "__main__":

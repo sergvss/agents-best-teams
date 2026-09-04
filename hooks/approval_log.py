@@ -53,11 +53,20 @@ DB_CLIENTS = r"(psql|mysql|mariadb|sqlite3|mongosh|clickhouse-client)"
 
 BASH_PATTERNS = [
     ("W", "git-commit", r"\bgit\b.*\bcommit\b"),
-    # Force-push переписывает историю, которую видят другие: это P по
-    # principles/03, а не W. Заблокированная попытка тоже попадает в журнал
-    # через PostToolUseFailure — то есть без этой строки самое опасное
-    # действие записывалось бы самым мягким классом.
-    ("P", "git-push-force", r"\bgit\b.*\bpush\b.*(--force|--mirror|--delete|\s-f\b|\s\+\S)"),
+    # Push, переписывающий или удаляющий чужую историю: P по principles/03,
+    # а не W. Заблокированная попытка тоже попадает в журнал через
+    # PostToolUseFailure — то есть без этой строки самое опасное действие
+    # записывалось бы самым мягким классом.
+    #
+    # `--force-with-lease` сюда намеренно не входит: хук сам предлагает его
+    # как безопасную замену и пропускает. Метить рекомендованную альтернативу
+    # тем же классом, что и запрещённое действие, — та самая
+    # самопротиворечивость, против которой написан principles/09.
+    #
+    # Формы перечислены не по написанию, а по смыслу: `+ветка` — тот же force,
+    # `:ветка` и `--delete` — удаление ветки на сервере.
+    ("P", "git-push-destructive",
+     r"\bgit\b.*\bpush\b.*(--force(?!-with-lease)|--mirror|--delete|\s-f\b|\s\+\S|\s:\S)"),
     ("W", "git-push", r"\bgit\b.*\bpush\b"),
     ("W", "git-tag", r"\bgit\b.*\btag\b"),
     ("W", "git-merge", r"\bgit\b.*\b(merge|rebase|cherry-pick)\b"),
