@@ -179,5 +179,73 @@ class TestContract(RetryGuardTestCase):
         self.assertEqual(proc.stdout.decode("utf-8").strip(), "")
 
 
+class TestProjectWithoutGit(unittest.TestCase):
+    """
+    Проект без git. Отпечаток рабочей копии считался только через git, вне
+    репозитория возвращался пустым - и правило вырождалось в слепой счётчик,
+    который обвинял агента в том, что он ничего не менял, тогда как он менял.
+
+    Тесты этого не ловили, потому что setUp безусловно делал git init:
+    ветка с пустым отпечатком не исполнялась ни разу.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.cwd = self._tmp.name
+        self.session = "nogit-{}-{}".format(os.getpid(), id(self))
+        sys.path.insert(0, os.path.dirname(os.path.abspath(HOOK)))
+        import retry_guard
+        self.module = retry_guard
+        with open(os.path.join(self.cwd, "app.py"), "w", encoding="utf-8") as fh:
+            fh.write("x = 1\n")
+
+    def tearDown(self):
+        try:
+            os.remove(self.module.state_path(self.session))
+        except OSError:
+            pass
+        self._tmp.cleanup()
+
+    def call(self, command, record=False):
+        argv = [sys.executable, "-X", "utf8", HOOK] + (["--record"] if record else [])
+        payload = {"tool_name": "Bash", "tool_input": {"command": command},
+                   "session_id": self.session, "cwd": self.cwd}
+        proc = subprocess.run(argv, input=json.dumps(payload).encode("utf-8"),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(proc.returncode, 0, "хук не имеет права падать")
+        out = proc.stdout.decode("utf-8").strip()
+        return json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"] if out else None
+
+    def test_is_not_a_git_repository(self):
+        # Опора остальных тестов класса: без неё они молча проверяли бы git.
+        self.assertFalse(os.path.isdir(os.path.join(self.cwd, ".git")))
+
+    def test_blind_retry_is_still_stopped(self):
+        cmd = "pytest -q"
+        for _ in range(3):
+            self.call(cmd, record=True)
+        reason = self.call(cmd)
+        self.assertIsNotNone(reason, "слепой повтор обязан блокироваться и без git")
+        self.assertIn("three-attempts rule", reason)
+
+    def test_editing_a_file_resets_the_counter(self):
+        cmd = "pytest -q"
+        for attempt in range(3):
+            self.call(cmd, record=True)
+            with open(os.path.join(self.cwd, "app.py"), "a", encoding="utf-8") as fh:
+                fh.write("# правка {}\n".format(attempt))
+        self.assertIsNone(self.call(cmd),
+                          "агент правил файл между попытками - это не слепой повтор")
+
+    def test_a_new_file_also_resets_the_counter(self):
+        cmd = "pytest -q"
+        for attempt in range(3):
+            self.call(cmd, record=True)
+            with open(os.path.join(self.cwd, "new{}.py".format(attempt)), "w",
+                      encoding="utf-8") as fh:
+                fh.write("y = 2\n")
+        self.assertIsNone(self.call(cmd))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

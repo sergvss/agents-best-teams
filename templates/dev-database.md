@@ -3,7 +3,7 @@ name: dev-database
 description: >
   DBA / database-разработчик. Схема БД, миграции, индексы, оптимизация запросов.
   НЕ пишет API-роутеры и не занимается деплоем.
-tools: Read, Edit, Write, Glob, Grep, Bash, context7
+tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__*
 # Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
 # Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <мощный reasoning-LLM>

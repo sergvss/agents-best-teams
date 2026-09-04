@@ -55,7 +55,11 @@ def bash(command, agent=None):
 
 
 def edit(file_path, tool="Edit", agent=None):
-    payload = {"tool_name": tool, "tool_input": {"file_path": file_path}}
+    # NotebookEdit приходит с notebook_path, а не file_path. Пока хелпер
+    # подставлял file_path всем подряд, проверка тетрадей проверяла не то
+    # поле: удаление notebook_path из guard.py оставляло все тесты зелёными.
+    field = "notebook_path" if tool == "NotebookEdit" else "file_path"
+    payload = {"tool_name": tool, "tool_input": {field: file_path}}
     if agent:
         payload["agent_type"] = agent
     return payload
@@ -1067,6 +1071,11 @@ class TestMessageCatalogue(unittest.TestCase):
         import ast
         hooks_dir = os.path.normpath(os.path.dirname(GUARD))
         cyrillic = re.compile(r"[А-Яа-яЁё]")
+        # Единственное законное исключение: сообщение о том, что каталога
+        # сообщений нет. Взять его из каталога нельзя по определению, поэтому
+        # оно написано в коде сразу на двух языках. Список закрытый: любое
+        # другое совпадение — ошибка, а не ещё одно исключение.
+        allowed = ("рядом с guard.py нет messages.py",)
         for name in sorted(os.listdir(hooks_dir)):
             if not name.endswith(".py") or name == "messages.py":
                 continue
@@ -1085,6 +1094,7 @@ class TestMessageCatalogue(unittest.TestCase):
                 and isinstance(node.value, str)
                 and cyrillic.search(node.value)
                 and node.value not in docs
+                and not any(text in node.value for text in allowed)
             ]
             with self.subTest(hook=name):
                 self.assertFalse(
@@ -1118,6 +1128,87 @@ class TestMessageCatalogue(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         reason = json.loads(proc.stdout.decode("utf-8"))["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("BLOCKED", reason, "незнакомый язык не должен снимать защиту")
+
+
+class TestBackticksAreCommands(GuardTestCase):
+    """
+    Подстановка обратными кавычками запускает команду так же, как $(...).
+
+    Форма со скобками блокировалась побочно - скобки были в разделителях, -
+    а обратная кавычка не входила ни во что и приклеивалась к слову. Отсюда
+    правило: проверять обе формы одной и той же вещи, а не ту, что вспомнилась.
+    """
+
+    def test_backticks_run_a_command_like_dollar_parens(self):
+        for command in ("echo `rm -rf /`", "x=`rm -rf /`", "echo `git push --force`"):
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command))
+
+    def test_dollar_parens_still_blocked(self):
+        self.assertBlocked(bash("echo $(rm -rf /)"))
+
+    def test_backtick_inside_quotes_is_just_text(self):
+        # Кавычка в закавыченной строке команду не запускает - блокировать её
+        # значит мешать обычной работе.
+        self.assertAllowed(bash("echo 'смотри `здесь`'"))
+
+
+class TestHeredocBodyIsData(GuardTestCase):
+    """
+    Тело heredoc не выполняется никогда: это данные.
+
+    Разбор его как команд блокировал запись любого текста с примерами -
+    документации, теста, скрипта. Нашлось не тестом, а тем, что хук
+    заблокировал запись файла с примерами команд.
+    """
+
+    def test_commands_inside_a_heredoc_do_not_block(self):
+        for body in ("rm -rf /", "git push --force", "echo x | tee -a .env"):
+            with self.subTest(body=body):
+                self.assertAllowed(bash("cat > doc.md <<'EOF'\n{}\nEOF".format(body)))
+
+    def test_redirect_on_the_command_line_still_counts(self):
+        # Решает перенаправление в самой строке, а не текст внутри документа,
+        # поэтому защита .env остаётся на месте.
+        self.assertBlocked(bash("cat > .env <<'EOF'\nKEY=1\nEOF"))
+
+    def test_command_after_the_heredoc_is_still_checked(self):
+        self.assertBlocked(bash("cat > doc.md <<'EOF'\ntext\nEOF\nrm -rf /"))
+
+    def test_heredoc_marker_inside_quotes_hides_nothing(self):
+        # Иначе появился бы способ спрятать следующую строку от проверки.
+        self.assertBlocked(bash('echo "x <<EOF"\nrm -rf /'))
+
+    def test_indented_heredoc_is_recognised(self):
+        self.assertAllowed(bash("cat > doc.md <<-EOF\n\trm -rf /\n\tEOF"))
+
+
+class TestIncompleteInstallFailsClosed(GuardTestCase):
+    """
+    Неполная установка обязана остановить работу, а не снять защиту тихо.
+
+    guard.py без messages.py падал с кодом 1. Код 1 роняет хук, но вызов
+    пропускает - защиты нет, и об этом никто не узнаёт. Блокирует только код 2.
+    """
+
+    def test_guard_without_messages_blocks_instead_of_passing(self):
+        import shutil
+        work = tempfile.mkdtemp()
+        try:
+            shutil.copy(GUARD, work)
+            proc = subprocess.run(
+                [sys.executable, "-X", "utf8", os.path.join(work, "guard.py")],
+                input=json.dumps(bash("ls")).encode("utf-8"),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            self.assertEqual(proc.returncode, 2,
+                             "неполная установка обязана блокировать, а не пропускать")
+            text = proc.stderr.decode("utf-8", "replace")
+            # На обоих языках: каталога сообщений как раз и нет.
+            self.assertIn("messages.py", text)
+            self.assertIn("hooks/*.py", text)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
 
 if __name__ == "__main__":

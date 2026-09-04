@@ -45,14 +45,27 @@ DEFAULT_LOG = os.path.join(".claude", "approval-log.jsonl")
 # переводятся. Журнал это запись, а не сообщение: если метки зависели бы от
 # языка, один файл после смены ABT_LANG содержал бы записи на двух языках,
 # и по нему нельзя было бы ни искать, ни считать.
+#
+# Порядок значим: пишется первое совпадение. Более опасная форма команды
+# обязана стоять выше общей, иначе запишется её классом — и журнал будет
+# занижать риск ровно там, где точность и нужна.
+DB_CLIENTS = r"(psql|mysql|mariadb|sqlite3|mongosh|clickhouse-client)"
+
 BASH_PATTERNS = [
     ("W", "git-commit", r"\bgit\b.*\bcommit\b"),
+    # Force-push переписывает историю, которую видят другие: это P по
+    # principles/03, а не W. Заблокированная попытка тоже попадает в журнал
+    # через PostToolUseFailure — то есть без этой строки самое опасное
+    # действие записывалось бы самым мягким классом.
+    ("P", "git-push-force", r"\bgit\b.*\bpush\b.*(--force|--mirror|--delete|\s-f\b|\s\+\S)"),
     ("W", "git-push", r"\bgit\b.*\bpush\b"),
     ("W", "git-tag", r"\bgit\b.*\btag\b"),
     ("W", "git-merge", r"\bgit\b.*\b(merge|rebase|cherry-pick)\b"),
     ("W", "db-migration", r"\b(alembic|flyway|knex|liquibase)\b|\bmanage\.py\s+migrate\b|\bmigrate\s+(up|deploy|latest)\b"),
     ("W", "package-install", r"\b(pip|pip3|npm|yarn|pnpm|poetry|uv)\b.*\b(install|add|remove|uninstall)\b"),
-    ("P", "db-access", r"\b(psql|mysql|mariadb|sqlite3|mongosh|clickhouse-client)\b"),
+    # Класс даёт не запуск клиента, а команда внутри него: SELECT — это R.
+    ("P", "db-write", r"\b" + DB_CLIENTS + r"\b[^|;&]*\b(insert|update|delete|drop|alter|truncate|create|grant|revoke)\b"),
+    ("R", "db-access", r"\b" + DB_CLIENTS + r"\b"),
     ("P", "permissions", r"\b(chmod|chown|icacls)\b"),
     ("P", "service-control", r"\b(systemctl|service|sc\.exe)\b"),
     ("P", "secret-read", r"\b(cat|less|more|head|tail|type)\b[^|;&]*\.env\b"),

@@ -28,7 +28,20 @@ import sys
 
 # Тексты для человека живут в каталоге, а не здесь: язык выбирается
 # пользователем, и правило не должно зависеть от того, какой он выбрал.
-from messages import msg, use_project
+try:
+    from messages import msg, use_project
+except ImportError:
+    # Отказ, а не падение. Код 1 хук роняет, но вызов пропускает - защита
+    # снимается тихо, и об этом никто не узнаёт. Код 2 блокирует, поэтому
+    # неполная установка видна с первой же команды, как и обещает install.md.
+    # Текст здесь на обоих языках: каталога сообщений как раз и нет.
+    sys.stderr.write(
+        "BLOCKED: messages.py is missing next to guard.py. "
+        "Copy every hooks/*.py file, not guard.py alone.\n"
+        "BLOCKED: рядом с guard.py нет messages.py. "
+        "Копировать нужно все файлы hooks/*.py, а не один guard.py.\n"
+    )
+    sys.exit(2)
 
 # Инструменты, которые пишут в файлы. Read сюда намеренно не входит.
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -61,7 +74,14 @@ SHELL_WRAPPERS = {"sh", "bash", "zsh", "dash", "ksh", "ash"}
 
 # Операторы, разделяющие самостоятельные команды. Перенаправления (> и >>)
 # сюда не входят намеренно: они нужны правилу env внутри сегмента.
-SEGMENT_SEPARATORS = {";", "|", "||", "&&", "&", "|&", ";;", "(", ")"}
+# Обратная кавычка здесь потому, что `rm -rf /` — такой же запуск команды,
+# как $(rm -rf /), только вторая форма попадала под скобки, а первая ни подо
+# что: echo `rm -rf /` проходил мимо всех четырёх правил.
+SEGMENT_SEPARATORS = {";", "|", "||", "&&", "&", "|&", ";;", "(", ")", "`"}
+
+# То же множество для shlex. По умолчанию punctuation_chars=True даёт
+# ();<>|& — обратной кавычки там нет, и без неё она приклеивалась к слову.
+PUNCTUATION_CHARS = "();<>|&`"
 
 # Глубина раскрытия вложенных sh -c. Дальше начинается не ошибка агента,
 # а намеренная обфускация, которую эти хуки закрывать не берутся.
@@ -155,6 +175,70 @@ def deny(reason, ask=True):
     sys.exit(0)
 
 
+HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+
+
+def heredoc_delimiters(line):
+    """
+    Ограничители heredoc, объявленные в строке, — и только вне кавычек.
+
+    Внутри кавычек `<<EOF` heredoc'ом не является, а если считать его таковым,
+    появится способ спрятать следующую строку от проверки.
+    """
+    found = []
+    quote = None
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if quote:
+            if char == "\\" and quote == '"':
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            index += 1
+        elif char in "'\"":
+            quote = char
+            index += 1
+        elif char == "<" and line.startswith("<<", index):
+            match = HEREDOC_START.match(line, index)
+            if not match:
+                index += 2
+                continue
+            found.append(match.group(2))
+            index = match.end()
+        else:
+            index += 1
+    return found
+
+
+def strip_heredoc_bodies(command):
+    """
+    Убирает тела heredoc: это данные, а не команды, выполнены они не будут.
+
+    Разбирать их как команды — значит блокировать запись любого текста
+    с примерами: документации, теста, скрипта. Хук, мешающий обычной работе,
+    отключают в первый же день.
+
+    Сама строка с перенаправлением остаётся, поэтому `cat > .env <<EOF`
+    по-прежнему виден правилу env: решает перенаправление, а не текст внутри.
+    """
+    if "<<" not in command:
+        return command
+    lines = command.split("\n")
+    kept = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        kept.append(line)
+        index += 1
+        for delimiter in heredoc_delimiters(line):
+            while index < len(lines) and lines[index].strip() != delimiter:
+                index += 1
+            index += 1   # строка-ограничитель тоже не команда
+    return "\n".join(kept)
+
+
 def newlines_to_separators(command):
     """
     Перевод строки вне кавычек — такой же разделитель команд, как точка с запятой.
@@ -185,7 +269,8 @@ def lex(command):
     punctuation_chars=True — то, ради чего берётся shlex вместо регулярок:
     он не спутает разделитель команд с тем же символом внутри строки.
     """
-    lexer = shlex.shlex(newlines_to_separators(command), posix=True, punctuation_chars=True)
+    lexer = shlex.shlex(newlines_to_separators(command), posix=True,
+                        punctuation_chars=PUNCTUATION_CHARS)
     lexer.whitespace_split = True
     try:
         return list(lexer)
@@ -678,6 +763,7 @@ def analyze_bash(command, enabled, agent="", depth=0):
     """
     if depth > MAX_NESTING:
         return
+    command = strip_heredoc_bodies(command)
     for tokens in split_segments(command):
         tokens = strip_wrappers(tokens)
         if not tokens:

@@ -59,7 +59,15 @@ class TestWhatGetsLogged(ApprovalLogTestCase):
             ("git push origin main", "W"),
             ("alembic upgrade head", "W"),
             ("pip install requests", "W"),
-            ("psql -c 'SELECT 1'", "P"),
+            # Класс даёт команда внутри клиента, а не запуск клиента:
+            # чтение это R, изменение данных - P. Раньше журнал метил P
+            # и обычный SELECT, то есть завышал там и занижал в другом месте.
+            ("psql -c 'SELECT 1'", "R"),
+            ("psql -c 'DELETE FROM runs'", "P"),
+            ("sqlite3 db.sqlite 'DROP TABLE runs'", "P"),
+            # Force-push переписывает историю: P, а не W как обычный push.
+            ("git push --force origin main", "P"),
+            ("git push origin +main", "P"),
             ("chmod 600 key.pem", "P"),
             ("cat .env", "P"),
         ]:
@@ -163,7 +171,11 @@ class TestFailedActionsAreRecordedToo(ApprovalLogTestCase):
                          event="PostToolUseFailure")
         self.assertEqual(len(found), 1, "неудавшееся действие не попало в журнал")
         self.assertIs(found[0]["ok"], False)
-        self.assertEqual(found[0]["what"], "git-push")
+        # Заблокированная попытка попадает в журнал именно этим путём, и
+        # записать её мягким классом значит занизить риск там, где точность
+        # и нужна: в журнале того, что агент пытался сделать.
+        self.assertEqual(found[0]["what"], "git-push-force")
+        self.assertEqual(found[0]["risk"], "P")
 
     def test_routine_stays_out_even_when_it_fails(self):
         # Фильтр рутины не должен зависеть от исхода: журнал, куда пишется

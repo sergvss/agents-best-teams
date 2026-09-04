@@ -125,14 +125,17 @@ def main():
     if duplicate_installation(cwd):
         parts.append(msg("session.duplicate_install"))
 
+    # Язык спрашивается до опт-аута: файл называется .no-team-setup-prompt и
+    # обещает выключить предложение собрать команду, а не всё сразу. Гасить им
+    # заодно и выбор языка — значит оставить человека на умолчании, которого
+    # он не выбирал, и не сказать ему об этом. Вопрос одноразовый: как только
+    # язык задан, он больше не появляется.
+    if not language_is_chosen(cwd):
+        parts.append(msg("session.language_prompt"))
+
     if os.path.exists(os.path.join(cwd, OPT_OUT)):
         return emit(parts)
 
-    # Ещё два повода заговорить, и оба одноразовые. Язык идёт первым: пока он
-    # не выбран, всё остальное человек читает на умолчании, которое ему могли
-    # и не подобрать.
-    if not language_is_chosen(cwd):
-        parts.append(msg("session.language_prompt"))
     if not team_is_set_up(cwd):
         parts.append(msg("session.team_setup"))
 

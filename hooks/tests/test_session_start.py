@@ -231,5 +231,50 @@ class TestLanguagePrompt(SessionStartTestCase):
         self.assertIn("setup-agent-team", prompt)
 
 
+class TestOptOutSilencesOnlyWhatItPromises(SessionStartTestCase):
+    """
+    Файл называется .no-team-setup-prompt и обещает выключить предложение
+    собрать команду. Он же гасил заодно вопрос о языке - ранний return стоял
+    выше языкового блока, - и человек оставался на умолчании, которого не
+    выбирал, не узнав, что выбор вообще был.
+    """
+
+    def run_without_lang(self, cwd):
+        """Прогон с намеренно снятым ABT_LANG - иначе язык уже задан."""
+        payload = {"hook_event_name": "SessionStart", "source": "startup", "cwd": cwd}
+        env = {k: v for k, v in os.environ.items() if k != "ABT_LANG"}
+        proc = subprocess.run(
+            [sys.executable, "-X", "utf8", HOOK],
+            input=json.dumps(payload).encode("utf-8"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
+        out = proc.stdout.decode("utf-8").strip()
+        return json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else None
+
+    def opt_out(self):
+        os.makedirs(os.path.join(self.cwd, ".claude"), exist_ok=True)
+        open(os.path.join(self.cwd, ".claude", ".no-team-setup-prompt"), "w").close()
+
+    def test_language_question_survives_the_opt_out(self):
+        self.opt_out()
+        prompt = self.run_without_lang(self.cwd)
+        self.assertIsNotNone(prompt, "опт-аут не должен гасить вопрос о языке")
+        self.assertIn(".abt-lang", prompt)
+
+    def test_team_prompt_is_the_one_that_goes_silent(self):
+        self.opt_out()
+        prompt = self.run_without_lang(self.cwd) or ""
+        self.assertNotIn("setup-agent-team", prompt)
+
+    def test_opt_out_is_fully_silent_once_language_is_chosen(self):
+        # Оба повода одноразовые: когда язык задан, опт-аут молчит целиком.
+        self.opt_out()
+        os.makedirs(os.path.join(self.cwd, ".claude"), exist_ok=True)
+        with open(os.path.join(self.cwd, ".claude", ".abt-lang"), "w", encoding="utf-8") as fh:
+            fh.write("ru")
+        self.assertIsNone(self.run_without_lang(self.cwd))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

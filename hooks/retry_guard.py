@@ -67,6 +67,45 @@ def command_key(command):
     return hashlib.sha256(re.sub(r"\s+", " ", command).strip().encode("utf-8")).hexdigest()[:16]
 
 
+# Каталоги, которые запасной обход не смотрит: они большие и меняются не от
+# правок агента, а обход должен стоить меньше, чем ошибка, которую он ловит.
+UNSCANNED_DIRS = {
+    ".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv",
+    "dist", "build", "target", ".next", ".mypy_cache", ".pytest_cache", ".tox",
+}
+
+# Потолок обхода. Отпечаток по части дерева всё равно меняется от правки
+# в этой части, а полный обход большого проекта стоил бы дороже пользы.
+MAX_SCANNED_FILES = 3000
+
+
+def directory_fingerprint(cwd):
+    """
+    Запасной отпечаток для проекта без git: размер и время правки файлов.
+
+    Без него правило вырождалось вне git-репозитория в слепой счётчик и
+    обвиняло агента в том, что он ничего не менял, — тогда как он менял.
+    Ложное обвинение хуже отсутствия правила: спорить с ним агенту нечем.
+    """
+    parts = []
+    for root, dirs, files in os.walk(cwd):
+        dirs[:] = [d for d in dirs if d not in UNSCANNED_DIRS]
+        for name in files:
+            target = os.path.join(root, name)
+            try:
+                stat = os.stat(target)
+            except OSError:
+                continue   # исчез между обходом и stat — не наше дело
+            parts.append("{}:{}:{}".format(target, stat.st_size, stat.st_mtime_ns))
+        if len(parts) >= MAX_SCANNED_FILES:
+            break
+    if not parts:
+        return ""
+    # os.walk порядок не гарантирует, а отпечаток обязан быть устойчивым.
+    parts.sort()
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
 def workspace_fingerprint(cwd):
     """
     Отпечаток рабочей копии. Меняется, когда меняются файлы, — этого достаточно,
@@ -88,13 +127,13 @@ def workspace_fingerprint(cwd):
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15,
             )
         except (OSError, subprocess.SubprocessError):
-            return ""
+            return directory_fingerprint(cwd)   # git недоступен вовсе
         # git diff HEAD падает в репозитории без единого коммита — тогда
         # обходимся porcelain: он там и так покажет всё как неотслеживаемое.
         if result.returncode == 0:
             parts.append(result.stdout)
         elif command[1] == "status":
-            return ""
+            return directory_fingerprint(cwd)   # каталог не под git
     # Неотслеживаемые файлы не попадают ни в porcelain по содержимому
     # (там только «?? path»), ни в diff — а правят их не реже прочих.
     # Читать их целиком незачем: размер и время правки меняются вместе с
@@ -112,7 +151,7 @@ def workspace_fingerprint(cwd):
                                            stat.st_mtime_ns).encode("utf-8"))
 
     if not parts:
-        return ""
+        return directory_fingerprint(cwd)
     return hashlib.sha256(b"\n".join(parts)).hexdigest()[:16]
 
 
