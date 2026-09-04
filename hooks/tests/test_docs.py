@@ -182,6 +182,55 @@ class TestCountsMatchReality(unittest.TestCase):
             with self.subTest(role=name):
                 self.assertIn(name, index, "роли нет в индексе templates/README.md")
 
+class TestOnlyRolesGetInstalledAsRoles(unittest.TestCase):
+    """
+    В templates/ лежат не только роли, и инструкция установки обязана это знать.
+
+    Маска cp -r templates/* клала в .claude/agents/ ещё и external-llm-reviewer -
+    паттерн вызова внешней модели без единого инструмента, но с полем name.
+    Он регистрировался как роль, которую оркестратору некуда позвать.
+    Тест ловит следующий такой файл, а не этот: этот уже исправлен.
+    """
+
+    # Файлы каталога, которые ролями не являются. Список закрытый: новый
+    # не-роль обязан попасть и сюда, и в инструкцию установки.
+    NOT_ROLES = {"README.md", "external-llm-reviewer.md"}
+
+    def templates(self):
+        base = os.path.join(REPO, "templates")
+        return [n for n in sorted(os.listdir(base)) if n.endswith(".md")]
+
+    def test_every_role_declares_tools(self):
+        # Опознавательный признак роли - поле tools. Без него агент получает
+        # инструменты по умолчанию, то есть матрица разрешений не действует.
+        for name in self.templates():
+            if name in self.NOT_ROLES:
+                continue
+            with self.subTest(template=name):
+                text = read(os.path.join(REPO, "templates", name))
+                self.assertRegex(text, r"(?m)^tools:",
+                                 "шаблон без поля tools - это не роль")
+
+    def test_non_roles_are_excluded_from_the_install_command(self):
+        install = read(os.path.join(REPO, "docs", "install.md"))
+        for name in self.NOT_ROLES:
+            with self.subTest(template=name):
+                self.assertIn(name, install,
+                              "не-роль обязана быть исключена из установки явно")
+
+    def test_the_list_of_non_roles_is_current(self):
+        # Обратная сторона: файл из списка мог стать ролью или исчезнуть,
+        # и тогда исключение в инструкции установки лишнее.
+        present = set(self.templates())
+        for name in self.NOT_ROLES:
+            with self.subTest(template=name):
+                self.assertIn(name, present, "файла нет - исключение устарело")
+                if name == "README.md":
+                    continue
+                text = read(os.path.join(REPO, "templates", name))
+                self.assertNotRegex(text, r"(?m)^tools:",
+                                    "у файла появились tools - он стал ролью")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

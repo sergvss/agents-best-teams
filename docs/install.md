@@ -19,8 +19,16 @@ cd agents-best-teams
 PROJECT=/path/to/your-project
 mkdir -p "$PROJECT/.claude/agents" "$PROJECT/.claude/skills" "$PROJECT/.claude/hooks"
 
-# Шаблоны агентов — адаптировать под проект после копирования
-cp -r templates/* "$PROJECT/.claude/agents/"
+# Шаблоны агентов — адаптировать под проект после копирования.
+# Маской "все .md" здесь копировать нельзя: в каталоге лежат два файла,
+# которые ролями не являются. README.md — оглавление каталога, а
+# external-llm-reviewer.md — паттерн вызова внешней модели, у него нет
+# поля tools, зато есть name: попав в .claude/agents/, он зарегистрируется
+# как роль без единого инструмента, которую оркестратору некуда позвать.
+for f in templates/*.md; do
+  case "$(basename "$f")" in README.md|external-llm-reviewer.md) continue ;; esac
+  cp "$f" "$PROJECT/.claude/agents/"
+done
 
 # Принципы и чек-листы: роли ссылаются на них относительным путём
 # ../principles/..., и после копирования в .claude/agents/ этот путь

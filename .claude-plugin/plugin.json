@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "agents-best-teams",
   "displayName": "agents-best-teams",
-  "version": "1.15.0",
+  "version": "1.15.1",
   "description": "AI agent team methodology: protective hooks, checklists as skills, and project-aware role setup. Docs and role templates are in Russian.",
   "author": {
     "name": "sergvss",
