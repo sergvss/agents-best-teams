@@ -378,6 +378,35 @@ class TestContract(GuardTestCase):
                 self.assertIsNotNone(reason, "конфигурация принята молча")
                 self.assertIn(marker, reason)
 
+    def test_every_rule_block_tells_the_agent_to_ask(self):
+        """
+        Каждая блокировка правила заканчивается указанием спросить пользователя.
+
+        Смысл в моменте: агент читает это тогда, когда упёрся, — а не в промпте
+        роли, который к этому времени далеко позади. Без указания он подбирает
+        обход, и в автоматическом режиме обход останется незамеченным.
+        """
+        cases = [
+            bash("rm -rf /"),
+            bash("git push --force origin main"),
+            bash('psql -c "DELETE FROM users"'),
+            bash("echo K=1 > .env"),
+            edit(".env", "Write"),
+            edit("src/app.py", "Edit", "code-reviewer"),
+        ]
+        for payload in cases:
+            with self.subTest(payload=payload["tool_input"]):
+                reason = run_hook(payload)
+                self.assertIsNotNone(reason, "ожидалась блокировка")
+                self.assertIn("ask the user", reason)
+
+    def test_configuration_errors_do_not_tell_the_agent_to_ask(self):
+        # Опечатку в конфигурации чинит человек в файле, а не агент вопросом:
+        # предлагать здесь «спроси» значит путать две разные ситуации.
+        reason = run_hook(bash("ls -la"), rules="fs,gti")
+        self.assertIsNotNone(reason)
+        self.assertNotIn("ask the user", reason)
+
     def test_deny_payload_shape(self):
         proc = subprocess.run(
             [sys.executable, "-X", "utf8", GUARD],

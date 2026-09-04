@@ -92,8 +92,18 @@ MEMORY_MATRIX = {
 BROWSER_TESTER_WRITE_DIRS = ("/tests/", "/test/")
 
 
-def deny(reason):
-    """Печатает решение об отказе и завершает работу."""
+def deny(reason, ask=True):
+    """
+    Печатает решение об отказе и завершает работу.
+
+    К блокировкам правил дописывается общий хвост: спроси пользователя, а не
+    ищи обход. Место выбрано намеренно — это единственная точка, через которую
+    проходят все семнадцать сообщений, и агент читает её в тот момент, когда
+    упёрся. Ошибкам конфигурации хвост не нужен: там чинят настройку, а не
+    решают, как поступить с задачей.
+    """
+    if ask:
+        reason += msg("guard.ask_do_not_work_around")
     payload = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -561,14 +571,14 @@ def main():
     # Пустой список правил отключает защиту целиком и так же молча, как опечатка.
     # Выключать хук нужно, убирая его из конфигурации, а не обнуляя --rules.
     if not enabled:
-        deny(msg("config.empty_rules", rules=", ".join(ALL_RULES)))
+        deny(msg("config.empty_rules", rules=", ".join(ALL_RULES)), ask=False)
 
     # Опечатка в имени правила не должна тихо отключать защиту: молчаливо
     # неработающий хук хуже отсутствующего, потому что создаёт уверенность.
     unknown = sorted(enabled - set(ALL_RULES))
     if unknown:
         deny(msg("config.unknown_rules",
-                 unknown=", ".join(unknown), rules=", ".join(ALL_RULES)))
+                 unknown=", ".join(unknown), rules=", ".join(ALL_RULES)), ask=False)
 
     raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     if not raw.strip():

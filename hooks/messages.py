@@ -73,6 +73,19 @@ def msg(key, **fields):
 
 
 MESSAGES = {
+    # -- общий хвост всех блокировок правил ----------------------------------
+    # Дописывается в deny() к каждому сообщению правила, а не повторяется в
+    # семнадцати текстах. Смысл в моменте: агент читает это ровно тогда, когда
+    # упёрся, — не в промпте роли, который к этому времени далеко позади.
+    "guard.ask_do_not_work_around": {
+        "ru": "\n\nНи одна альтернатива не подходит — спроси пользователя, а не подбирай обход. "
+              "В автоматическом режиме это важнее всего: там за каждым шагом никто не смотрит, "
+              "и найденный обход останется незамеченным.",
+        "en": "\n\nIf none of the alternatives fits, ask the user — do not go looking for a way "
+              "around. This matters most in automatic mode: nobody is watching each step there, "
+              "and a workaround you find will go unnoticed.",
+    },
+
     # -- правило memory ------------------------------------------------------
     "memory.extra_browser_tester": {
         "ru": " и тест-артефакты в tests/",
