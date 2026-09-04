@@ -12,7 +12,7 @@
 |---|---|---|---|
 | `fs` | Bash | `rm -rf` по корню, `~`, `.`, `..`, маске или пути с переменной | P |
 | `git` | Bash | `push --force` и `+рефспек`, `--mirror`, удаление ветки на сервере, `reset --hard`, `clean` без сухого прогона, `checkout -- .` и `restore .` | P / W |
-| `sql` | Bash | `DELETE` и `UPDATE` без `WHERE`, `DROP`, `TRUNCATE` | P |
+| `sql` | Bash | `DELETE` и `UPDATE` без `WHERE`; `DROP` любого объекта и `ALTER TABLE … DROP`; `TRUNCATE` | P |
 | `env` | Bash, Edit, Write | запись в `.env` и `.env.*` — и редактором, и через оболочку | P |
 | `memory` | Bash, Edit, Write | запись роли за пределами её зоны — и редактором, и через оболочку | W |
 

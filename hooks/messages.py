@@ -88,8 +88,8 @@ MESSAGES = {
 
     # -- правило memory ------------------------------------------------------
     "memory.extra_browser_tester": {
-        "ru": " и тест-артефакты в tests/",
-        "en": " and test artefacts under tests/",
+        "ru": " и каталог E2E целиком",
+        "en": " and the whole E2E directory",
     },
     "memory.shell_write": {
         "ru": "BLOCKED [W/Write]: {agent} пытается записать {target} командой оболочки.\n\n"

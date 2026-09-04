@@ -22,6 +22,11 @@ mkdir -p "$PROJECT/.claude/agents" "$PROJECT/.claude/skills" "$PROJECT/.claude/h
 # Шаблоны агентов — адаптировать под проект после копирования
 cp -r templates/* "$PROJECT/.claude/agents/"
 
+# Принципы и чек-листы: роли ссылаются на них относительным путём
+# ../principles/..., и после копирования в .claude/agents/ этот путь
+# указывает на .claude/principles/. Без них ссылки внутри ролей ведут в никуда.
+cp -r principles checklists "$PROJECT/.claude/"
+
 # Чек-листы как скиллы
 cp -r skills/* "$PROJECT/.claude/skills/"
 
@@ -31,7 +36,7 @@ cp -r skills/* "$PROJECT/.claude/skills/"
 cp hooks/*.py "$PROJECT/.claude/hooks/"
 ```
 
-Маска `*.py` здесь не лень, а защита от самой частой ошибки установки: скопировать `guard.py` и решить, что готово. Конфигурация ссылается на `guard.py`, `approval_log.py`, `retry_guard.py` и `session_start.py`; недостающий файл не даёт ошибки — хук просто не запускается, а выглядит настроенным.
+Маска `*.py` здесь не лень, а защита от самой частой ошибки установки: скопировать `guard.py` и решить, что готово. Конфигурация ссылается на `guard.py`, `approval_log.py`, `retry_guard.py` и `session_start.py`; недостающий файл роняет хук: `guard.py` без `messages.py` печатает Traceback и выходит с кодом 1, а отсутствующий скрипт даёт «can't open file» и код 2. Для `PreToolUse` это блокирующая ошибка, то есть работа встанет — но встанет она позже и в другом месте, чем установка, и связь с пропущенным файлом придётся искать.
 
 Пятый, `verify.py`, в конфигурацию намеренно не включён: без команды тестов ему нечего запускать. Подключение — [hooks/README.md](../hooks/README.md).
 

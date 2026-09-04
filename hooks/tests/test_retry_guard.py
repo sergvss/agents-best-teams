@@ -100,6 +100,44 @@ class TestNormalWorkIsNotBlocked(RetryGuardTestCase):
             self.touch("fix{}.py".format(i))
             self.assertIsNone(self.call(cmd), "цикл починки заблокирован на шаге {}".format(i))
 
+    def test_fixing_an_already_dirty_file_counts_as_a_change(self):
+        """
+        Правка файла, который уже изменён, — тоже изменение.
+
+        Отпечаток считался по `git status --porcelain`, а это статус и путь,
+        но не содержимое: у уже изменённого файла строка ` M path` остаётся
+        той же после любой следующей правки. Агент, чинящий один и тот же
+        файл между попытками — самый обычный сценарий, — выглядел
+        повторяющим вслепую и получал блокировку с текстом «в рабочей копии
+        ничего не изменилось». Прежний тест этого не ловил, потому что
+        создавал на каждом шаге новый файл.
+        """
+        cmd = "pytest -q"
+        for i in range(5):
+            self.call(cmd, record=True)
+            # Один и тот же файл, разное содержимое.
+            self.touch("same.py", "версия {}".format(i))
+            self.assertIsNone(
+                self.call(cmd),
+                "правка уже изменённого файла не засчиталась на шаге {}".format(i),
+            )
+
+    def test_fixing_an_already_committed_file_counts_as_a_change(self):
+        # Второй случай той же дыры: файл под версионным контролем. Здесь
+        # porcelain даёт неизменное « M path», а меняется только содержимое.
+        self.touch("tracked.py", "начало")
+        for command in (["git", "add", "-A"], ["git", "commit", "-qm", "add"]):
+            subprocess.run(command, cwd=self.cwd, env=self.env,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cmd = "pytest -q"
+        for i in range(5):
+            self.call(cmd, record=True)
+            self.touch("tracked.py", "исправление {}".format(i))
+            self.assertIsNone(
+                self.call(cmd),
+                "правка отслеживаемого файла не засчиталась на шаге {}".format(i),
+            )
+
     def test_below_limit_passes(self):
         cmd = "pytest -q"
         for _ in range(2):

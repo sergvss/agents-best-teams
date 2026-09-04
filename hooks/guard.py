@@ -33,6 +33,11 @@ from messages import msg, use_project
 # Инструменты, которые пишут в файлы. Read сюда намеренно не входит.
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
+# Из них те, что создают файл, а не правят существующий. Набор задан отдельно,
+# чтобы матрица ниже не перечисляла инструменты поимённо: именно перечисление
+# оставило NotebookEdit вне запретов и открыло ролям запись тетрадей куда угодно.
+CREATE_TOOLS = {"Write", "NotebookEdit"}
+
 # Цели, по которым rm -rf недопустим ни при каких обстоятельствах.
 DANGEROUS_RM_TARGETS = {
     "/", "/*", "~", "~/", "~/*", ".", "./", "./*", "..", "../", "*",
@@ -84,9 +89,13 @@ MEMORY_MATRIX = {
     "vendor-auditor": WRITE_TOOLS,
     # browser-tester правит тест-артефакты: в зоне E2E ему открыты все
     # инструменты записи, за её пределами — ни один.
-    "browser-tester": {"Edit", "MultiEdit", "Write"},
-    "devops": {"Write"},
-    "local-sysops": {"Write"},
+    "browser-tester": WRITE_TOOLS,
+    # devops и local-sysops правят существующие файлы, но не создают новые.
+    # NotebookEdit здесь вместе с Write не по формальности: тетрадь — такой же
+    # файл, и роль, которой нельзя создать .py, не должна создавать .ipynb.
+    # Перечисление инструментов поимённо уже один раз оставило дыру.
+    "devops": CREATE_TOOLS,
+    "local-sysops": CREATE_TOOLS,
 }
 
 # Зона записи browser-tester: каталог E2E, как бы он ни лежал — `e2e/` в корне
@@ -444,7 +453,16 @@ def _check_sql_statement(flat):
     if re.search(r"\bupdate\s+[a-z_][\w.]*\s+set\b", flat, re.I) and not has_where:
         deny(msg("sql.update_no_where"))
 
-    if re.search(r"\b(drop\s+(database|schema|table)|truncate\b)", flat, re.I):
+    # DROP не только у таблиц: индекс, представление, последовательность и
+    # особенно `ALTER TABLE ... DROP COLUMN` уничтожают данные ровно так же.
+    # Раньше правило ловило три формы из перечисленных, а таблица в hooks/README
+    # обещала «DROP» без оговорок — обещание было шире проверки.
+    if re.search(
+        r"\b(drop\s+(database|schema|table|index|view|sequence|type|column|constraint)"
+        r"|alter\s+table\b[^;]*\bdrop\b"
+        r"|truncate\b)",
+        flat, re.I,
+    ):
         deny(msg("sql.drop_truncate"))
 
 

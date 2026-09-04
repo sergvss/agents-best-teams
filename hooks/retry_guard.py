@@ -75,16 +75,45 @@ def workspace_fingerprint(cwd):
     Считается только когда счётчик уже подошёл к пределу, чтобы не платить
     запуском git за каждый вызов инструмента.
     """
-    try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15,
-        )
-    except (OSError, subprocess.SubprocessError):
+    parts = []
+    # porcelain ловит появление, удаление и неотслеживаемые файлы, но не
+    # содержимое: у уже изменённого файла строка « M path» остаётся той же
+    # после любой следующей правки. Одного его недостаточно — агент, который
+    # чинит тот же файл между попытками, выглядел бы повторяющим вслепую.
+    # diff добавляет содержимое отслеживаемых правок.
+    for command in (["git", "status", "--porcelain"], ["git", "diff", "HEAD"]):
+        try:
+            result = subprocess.run(
+                command, cwd=cwd,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        # git diff HEAD падает в репозитории без единого коммита — тогда
+        # обходимся porcelain: он там и так покажет всё как неотслеживаемое.
+        if result.returncode == 0:
+            parts.append(result.stdout)
+        elif command[1] == "status":
+            return ""
+    # Неотслеживаемые файлы не попадают ни в porcelain по содержимому
+    # (там только «?? path»), ни в diff — а правят их не реже прочих.
+    # Читать их целиком незачем: размер и время правки меняются вместе с
+    # содержимым и стоят один stat.
+    if parts:
+        for line in parts[0].decode("utf-8", "replace").splitlines():
+            if not line.startswith("??"):
+                continue
+            target = os.path.join(cwd, line[2:].strip().strip('"'))
+            try:
+                stat = os.stat(target)
+            except OSError:
+                continue
+            parts.append("{}:{}:{}".format(target, stat.st_size,
+                                           stat.st_mtime_ns).encode("utf-8"))
+
+    if not parts:
         return ""
-    if result.returncode != 0:
-        return ""
-    return hashlib.sha256(result.stdout).hexdigest()[:16]
+    return hashlib.sha256(b"\n".join(parts)).hexdigest()[:16]
 
 
 def read_input():

@@ -198,6 +198,31 @@ class TestSql(GuardTestCase):
             with self.subTest(command=command):
                 self.assertBlocked(bash(command), "P/Privileged")
 
+    def test_drop_covers_more_than_tables(self):
+        # Обещание в документации звучало как «DROP», а правило ловило три
+        # формы из перечисленных. Индекс, представление и особенно
+        # `ALTER TABLE ... DROP COLUMN` уничтожают данные ровно так же.
+        for command in [
+            'psql -c "DROP INDEX idx_users_email"',
+            'psql -c "DROP VIEW active_users"',
+            'psql -c "DROP SEQUENCE users_id_seq"',
+            'mysql -e "ALTER TABLE users DROP COLUMN email"',
+            'sqlite3 app.db "ALTER TABLE users DROP CONSTRAINT fk_org"',
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command), "P/Privileged")
+
+    def test_non_destructive_ddl_still_passes(self):
+        # Расширение правила не должно превратить его в запрет на DDL вообще:
+        # хук, мешающий обычной работе, отключают целиком.
+        for command in [
+            'psql -c "ALTER TABLE users ADD COLUMN age int"',
+            'psql -c "CREATE INDEX idx_users_email ON users(email)"',
+            'psql -c "ALTER TABLE users RENAME COLUMN a TO b"',
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command))
+
     def test_allows_safe(self):
         for command in [
             'psql -c "DELETE FROM users WHERE id = 1"',
@@ -347,6 +372,37 @@ class TestAgentMemory(GuardTestCase):
             with self.subTest(tool=tool, zone="чужая"):
                 self.assertBlocked(edit("client/game/step.js", tool, "browser-tester"),
                                    "browser-tester")
+
+    def test_no_write_tool_escapes_the_matrix(self):
+        """
+        Ни один инструмент записи не проходит мимо запрета.
+
+        Дыру оставило перечисление инструментов поимённо: у трёх ролей в
+        матрице стояли Edit/MultiEdit/Write, а NotebookEdit — нет, и роль
+        могла писать тетради куда угодно. Проверяется каждая роль каждым
+        инструментом, а не выборочно: выборочная проверка эту дыру и
+        пропустила.
+        """
+        outside = "src/deep/app"
+        for agent in ("browser-tester", "devops", "local-sysops", "code-reviewer"):
+            for tool, suffix in (("Write", ".py"), ("Edit", ".py"),
+                                 ("MultiEdit", ".py"), ("NotebookEdit", ".ipynb")):
+                # devops и local-sysops правят существующие файлы намеренно.
+                if agent in ("devops", "local-sysops") and tool in ("Edit", "MultiEdit"):
+                    continue
+                with self.subTest(agent=agent, tool=tool):
+                    self.assertBlocked(edit(outside + suffix, tool, agent), agent)
+
+    def test_denying_write_implies_denying_notebook(self):
+        # Тетрадь — такой же файл: роль, которой нельзя создать .py, не должна
+        # создавать .ipynb. Инвариант на саму матрицу, а не на поведение.
+        sys.path.insert(0, os.path.normpath(os.path.dirname(GUARD)))
+        import guard
+        for agent, denied in guard.MEMORY_MATRIX.items():
+            with self.subTest(agent=agent):
+                if "Write" in denied:
+                    self.assertIn("NotebookEdit", denied,
+                                  "у роли запрещён Write, но разрешён NotebookEdit")
 
     def test_ignores_agents_outside_matrix(self):
         self.assertAllowed(edit("src/app.py", "Edit", "dev-backend"))
