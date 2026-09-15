@@ -21,11 +21,13 @@ guard.py — защитные PreToolUse-хуки для команды аген
 """
 
 import argparse
+import fnmatch
 import json
 import posixpath
 import re
 import shlex
 import sys
+import tempfile
 
 # Тексты для человека живут в каталоге, а не здесь: язык выбирается
 # пользователем, и правило не должно зависеть от того, какой он выбрал.
@@ -117,6 +119,12 @@ MEMORY_MATRIX = {
     # Перечисление инструментов поимённо уже один раз оставило дыру.
     "devops": CREATE_TOOLS,
     "local-sysops": CREATE_TOOLS,
+    # qa-tester пишет законно - Edit и Write у неё в tools, - но только тесты.
+    # Граница «только тесты» жила в одном тексте промпта, и роль дважды её
+    # переходила: при мутационной проверке правила продуктовый config.py и,
+    # упёршись в лимит ходов, оставляла его сломанным (задача #2). Как и у
+    # browser-tester, инструменты записи отняты целиком, а зона их возвращает.
+    "qa-tester": WRITE_TOOLS,
 }
 
 # Зона записи browser-tester: каталог E2E, как бы он ни лежал — `e2e/` в корне
@@ -129,6 +137,16 @@ MEMORY_MATRIX = {
 # намеренно: лучше заблокировать и объяснить, чем угадывать. Это константа
 # под проект, как MEMORY_MATRIX и DB_CLIENTS.
 BROWSER_TESTER_WRITE_SEGMENTS = ("e2e",)
+
+# Зона записи qa-tester - тестовые файлы, где бы они ни лежали. Одного каталога
+# tests/ мало: в JS и TS тесты часто стоят рядом с кодом (Button.test.tsx,
+# __tests__/), и хук, не пускающий туда QA, отключили бы в первый же день.
+# Поэтому признака два: каталог по сегменту пути и имя тестового файла.
+# Константы под проект, как BROWSER_TESTER_WRITE_SEGMENTS.
+QA_TESTER_WRITE_SEGMENTS = ("tests", "test", "__tests__", "spec")
+QA_TESTER_FILE_PATTERNS = (
+    "test_*.py", "*_test.py", "conftest.py", "*_test.go", "*.test.*", "*.spec.*",
+)
 
 
 def in_own_memory(path, agent):
@@ -150,6 +168,72 @@ def in_browser_tester_zone(path):
     """True, если путь лежит внутри каталога E2E-тестов."""
     return any(part.lower() in BROWSER_TESTER_WRITE_SEGMENTS
                for part in path.split("/"))
+
+
+def comparable(path):
+    """
+    Путь для сравнения каталогов: прямые слеши, нижний регистр, диск без двоеточия.
+
+    C:/Temp и /c/Temp - один каталог: первое пишет Claude Code, второе Git Bash.
+    Без приведения временный каталог узнавался бы через раз.
+    """
+    path = "/" + posixpath.normpath(path.replace("\\", "/")).lstrip("/")
+    return re.sub(r"^/([a-z]):/", r"/\1/", path.lower())
+
+
+def in_temp_dir(path):
+    """True, если путь внутри системного временного каталога."""
+    here = comparable(path)
+    roots = {comparable(tempfile.gettempdir()), "/tmp"}
+    return any(here == root or here.startswith(root.rstrip("/") + "/") for root in roots)
+
+
+def in_qa_tester_zone(path):
+    """
+    True, если qa-tester может сюда писать: тестовый файл или временный каталог.
+
+    Временный каталог в зоне ради безопасной мутационной проверки: копия модуля
+    ломается там, и обрыв на лимите ходов следов в рабочей копии не оставляет.
+    Не пусти хук роль во временный каталог - безопасный способ стал бы
+    невозможен, и остался бы только опасный.
+
+    Каталог E2E в зону не входит, даже внутри tests/ и с именем *.spec.*:
+    у каталога ровно один хозяин, и это browser-tester.
+    """
+    if in_temp_dir(path):
+        return True
+    if in_browser_tester_zone(path):
+        return False
+    parts = [part.lower() for part in path.split("/") if part]
+    if not parts:
+        return False
+    if any(part in QA_TESTER_WRITE_SEGMENTS for part in parts[:-1]):
+        return True
+    return any(fnmatch.fnmatchcase(parts[-1], pattern) for pattern in QA_TESTER_FILE_PATTERNS)
+
+
+# Роли, у которых помимо папки памяти есть своя зона записи по путям.
+ROLE_WRITE_ZONES = {
+    "browser-tester": in_browser_tester_zone,
+    "qa-tester": in_qa_tester_zone,
+}
+
+
+def in_role_zone(path, agent):
+    """True, если путь внутри собственной зоны записи роли."""
+    zone = ROLE_WRITE_ZONES.get(agent)
+    return bool(zone and zone(path))
+
+
+def role_zone_hint(agent):
+    """Хвост строки «Разрешено: ...» в блокировке - описание зоны роли."""
+    if agent == "browser-tester":
+        return msg("memory.extra_browser_tester")
+    if agent == "qa-tester":
+        return msg("memory.extra_qa_tester",
+                   segments=", ".join(QA_TESTER_WRITE_SEGMENTS),
+                   patterns=", ".join(QA_TESTER_FILE_PATTERNS))
+    return ""
 
 
 def deny(reason, ask=True):
@@ -508,7 +592,7 @@ def check_memory_bash(tokens, agent):
         path = "/" + posixpath.normpath(target.strip("\"'").replace("\\", "/")).lstrip("/")
         if in_own_memory(path, agent):
             continue
-        if agent == "browser-tester" and in_browser_tester_zone(path):
+        if in_role_zone(path, agent):
             continue
         if edits_existing_files_allowed and modifies_existing(tokens, target):
             continue
@@ -516,7 +600,7 @@ def check_memory_bash(tokens, agent):
             "memory.shell_write",
             agent=agent,
             target=target,
-            extra=msg("memory.extra_browser_tester") if agent == "browser-tester" else "",
+            extra=role_zone_hint(agent),
         ))
 
 
@@ -731,7 +815,8 @@ def check_memory(tool_name, file_path, agent):
     # целиком через Write. Граница зон проводится по файлам, а не по
     # инструментам: в своей зоне роль работает обычным способом, в чужую
     # не заходит вовсе.
-    if agent == "browser-tester" and in_browser_tester_zone(path):
+    # qa-tester - тестовые файлы и временный каталог, см. in_qa_tester_zone.
+    if in_role_zone(path, agent):
         return
 
     if tool_name not in denied:
@@ -742,7 +827,7 @@ def check_memory(tool_name, file_path, agent):
         agent=agent,
         path=file_path,
         tool=tool_name,
-        extra=msg("memory.extra_browser_tester") if agent == "browser-tester" else "",
+        extra=role_zone_hint(agent),
     ))
 
 

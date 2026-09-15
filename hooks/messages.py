@@ -110,6 +110,16 @@ MESSAGES = {
         "ru": " и каталог E2E целиком",
         "en": " and the whole E2E directory",
     },
+    # Списки подставляются из констант guard.py: поправят константу под проект -
+    # текст блокировки не начнёт врать.
+    "memory.extra_qa_tester": {
+        "ru": ", тестовые файлы (каталоги {segments}; имена {patterns}) и системный "
+              "временный каталог. Мутационную проверку делай на копии модуля во временном "
+              "каталоге, а не на оригинале: обрыв на копии не оставляет сломанного кода",
+        "en": ", test files (directories {segments}; names {patterns}) and the system temp "
+              "directory. Run mutation checks on a copy of the module in the temp directory, "
+              "never on the original: an interrupted copy leaves no broken code behind",
+    },
     "memory.shell_write": {
         "ru": "BLOCKED [W/Write]: {agent} пытается записать {target} командой оболочки.\n\n"
               "Причина блокировки: этой роли запись вне своей зоны не положена по матрице "
@@ -135,18 +145,20 @@ MESSAGES = {
     },
     "memory.tool_write": {
         "ru": "BLOCKED [W/Write]: {agent} пытается изменить {path} инструментом {tool}.\n\n"
-              "Причина блокировки: этот инструмент роли не положен по матрице разрешений. "
-              "Он появился у неё только потому, что включено поле memory — оно выдаёт "
-              "Read/Write/Edit в обход списка tools.\n\n"
+              "Причина блокировки: запись сюда роли не положена по матрице разрешений. "
+              "Одни роли получают инструменты записи только из-за поля memory — оно выдаёт "
+              "Read/Write/Edit в обход списка tools; другие пишут законно, но лишь в своей "
+              "зоне.\n\n"
               "Разрешено: .claude/agent-memory/{agent}/{extra}\n\n"
               "Альтернативы:\n"
               "  1. Нужна правка вне зоны — верни задачу оркестратору, её сделает профильный агент\n"
               "  2. Заметка на будущее — пиши в свою папку памяти\n"
               "  3. Ограничение мешает по делу — меняй матрицу осознанно, а не в обход",
         "en": "BLOCKED [W/Write]: {agent} is trying to modify {path} with the {tool} tool.\n\n"
-              "Why this is blocked: the permission matrix does not grant this tool to this "
-              "role. It only appeared because the memory field is enabled — that field hands "
-              "out Read/Write/Edit bypassing the tools list.\n\n"
+              "Why this is blocked: the permission matrix does not let this role write here. "
+              "Some roles get write tools only because the memory field hands out "
+              "Read/Write/Edit bypassing the tools list; others write legitimately, but only "
+              "inside their own area.\n\n"
               "Allowed: .claude/agent-memory/{agent}/{extra}\n\n"
               "Alternatives:\n"
               "  1. An edit outside your area is needed — hand the task back to the "

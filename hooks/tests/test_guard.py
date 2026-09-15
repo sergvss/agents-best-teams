@@ -531,8 +531,9 @@ class TestAgentMemory(GuardTestCase):
                            "code-reviewer")
 
     def test_ignores_agents_outside_matrix(self):
+        # qa-tester здесь больше не пример: с задачи #2 её зона - тестовые файлы.
         self.assertAllowed(edit("src/app.py", "Edit", "dev-backend"))
-        self.assertAllowed(edit("src/app.py", "Edit", "qa-tester"))
+        self.assertAllowed(edit("src/app.py", "Edit", "dev-frontend"))
 
     def test_blocks_writes_through_shell(self):
         # Найдено на живом прогоне: инструмент Write у роли заблокирован, а
@@ -1306,6 +1307,97 @@ class TestConfirmationInsteadOfDenial(GuardTestCase):
                         edit(".env", "Write"), edit("src/app.py", "Edit", "code-reviewer")]:
             with self.subTest(payload=payload["tool_input"]):
                 self.assertBlocked(payload)
+
+
+class TestQaTesterZone(GuardTestCase):
+    """
+    Зона записи qa-tester: тестовые файлы и системный временный каталог.
+
+    Задача #2: роль при мутационной проверке отредактировала продуктовый
+    config.py, упёрлась в лимит ходов и оставила его сломанным. Шаблон
+    предупреждал об этом словами «это уже случалось» - то есть уговор не
+    сработал дважды. Правило, которое повторно нарушают, чинится кодом.
+    """
+
+    AGENT = "qa-tester"
+
+    def test_product_code_is_outside_the_zone(self):
+        for tool in ("Edit", "Write", "MultiEdit"):
+            with self.subTest(tool=tool):
+                self.assertBlocked(edit("src/pkg/config.py", tool, self.AGENT), self.AGENT)
+
+    def test_test_files_are_inside_wherever_they_live(self):
+        # Не только tests/ в корне: тесты рядом с кодом - обычная раскладка
+        # Jest, Vitest и Angular, и хук, не пускающий туда QA, отключат.
+        for path in [
+            "tests/test_api.py",
+            "backend/tests/conftest.py",
+            "server/test/helpers.js",
+            "src/__tests__/store.ts",
+            "spec/models/user_spec.rb",
+            "src/components/Button.test.tsx",
+            "src/pkg/test_config.py",
+            "src/pkg/config_test.py",
+            "internal/auth/token_test.go",
+            "src/app/login.component.spec.ts",
+            "conftest.py",
+        ]:
+            with self.subTest(path=path):
+                self.assertAllowed(edit(path, "Edit", self.AGENT))
+                self.assertAllowed(edit(path, "Write", self.AGENT))
+
+    def test_temp_directory_is_inside_so_a_copy_can_be_mutated(self):
+        # Безопасная мутация - на копии вне рабочей копии. Если хук не пустит
+        # роль во временный каталог, безопасный способ станет невозможным,
+        # и останется только опасный.
+        copy = os.path.join(tempfile.gettempdir(), "abt-mutation", "config.py")
+        self.assertAllowed(edit(copy, "Edit", self.AGENT))
+        self.assertAllowed(edit("/tmp/abt-mutation/config.py", "Write", self.AGENT))
+
+    def test_e2e_directory_has_one_owner(self):
+        # У каталога ровно один хозяин: E2E - зона browser-tester, даже когда
+        # лежит внутри tests/ и файл называется *.spec.*.
+        for path in ["e2e/login.spec.js", "tests/e2e/login.spec.js"]:
+            with self.subTest(path=path):
+                self.assertBlocked(edit(path, "Edit", self.AGENT), self.AGENT)
+                self.assertAllowed(edit(path, "Edit", "browser-tester"))
+
+    def test_test_config_is_not_a_test(self):
+        # Конфигурация прогона - не тест: её меняет владелец сборки.
+        for path in ["jest.config.js", "pytest.ini", "src/config/testing.py"]:
+            with self.subTest(path=path):
+                self.assertBlocked(edit(path, "Edit", self.AGENT))
+
+    def test_own_memory_stays_writable(self):
+        self.assertAllowed(edit(".claude/agent-memory/qa-tester/notes.md", "Write", self.AGENT))
+
+    def test_notebook_outside_the_zone_is_blocked(self):
+        self.assertBlocked(edit("analysis/report.ipynb", "NotebookEdit", self.AGENT))
+
+    def test_shell_half_agrees_with_the_tool_half(self):
+        # Обе половины правила решают одинаково - урок 1.14.0.
+        for command in ["cat > src/app.py", "sed -i 's/a/b/' src/pkg/config.py",
+                        "echo x | tee src/app.py"]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command, self.AGENT), self.AGENT)
+        for command in ["cat > tests/test_x.py", "echo x > src/Button.test.tsx",
+                        "pytest -q > /tmp/pytest.log", "npm test 2>&1", "pytest -q"]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command, self.AGENT))
+
+    def test_block_names_the_zone_and_the_safe_way(self):
+        # Агент читает текст блокировки ровно тогда, когда упёрся: там и
+        # должна быть подсказка про копию, а не только в промпте роли.
+        _, reason, _ = decide(edit("src/pkg/config.py", "Edit", self.AGENT))
+        self.assertIn("__tests__", reason)
+        self.assertIn("copy", reason)
+
+    def test_block_does_not_claim_the_tool_came_from_memory(self):
+        # У qa-tester Edit и Write законные. Фраза «инструмент появился только
+        # из-за поля memory» здесь неправда, и агент, прочитав её, решит, что
+        # писать ему нельзя вовсе.
+        _, reason, _ = decide(edit("src/pkg/config.py", "Edit", self.AGENT))
+        self.assertNotIn("only appeared because", reason)
 
 
 if __name__ == "__main__":
