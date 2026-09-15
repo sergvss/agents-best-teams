@@ -28,6 +28,8 @@ import sys
 
 # Тексты для человека — в каталоге сообщений, см. messages.py.
 from messages import LANG_FILE, SUPPORTED, msg, use_project
+# Файл настроек разбирает сам guard.py: правило одно, и разбор тоже один.
+from guard import PROJECT_CONFIG, read_project_config
 
 # Файл-маркер: пользователь решил, что подсказка не нужна.
 OPT_OUT = os.path.join(".claude", ".no-team-setup-prompt")
@@ -124,6 +126,14 @@ def main():
     parts = []
     if duplicate_installation(cwd):
         parts.append(msg("session.duplicate_install"))
+
+    # Ошибки в файле настроек защиты - тоже до опт-аута и каждую сессию. Хук на
+    # них откатывается к умолчаниям молча, чтобы не запереть работу; человек
+    # обязан узнать, что его настройка не действует.
+    _, problems = read_project_config(os.environ.get("CLAUDE_PROJECT_DIR") or cwd)
+    if problems:
+        parts.append(msg("session.config_problems", path=PROJECT_CONFIG,
+                         problems="\n".join("- " + problem for problem in problems)))
 
     # Язык спрашивается до опт-аута: файл называется .no-team-setup-prompt и
     # обещает выключить предложение собрать команду, а не всё сразу. Гасить им

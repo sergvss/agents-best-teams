@@ -141,7 +141,7 @@ Two reasons an update "does not arrive" even though you did everything right:
 | `.claude/.abt-lang` | The language you chose for hook messages |
 | `.claude/agents/` | The roles are adapted to your project |
 
-`hooks/*.py` and `skills/` are safe to overwrite, with one caveat: if you tuned `MEMORY_MATRIX`, `DB_CLIENTS`, `BROWSER_TESTER_WRITE_SEGMENTS` or the `QA_TESTER_*` zone constants in `guard.py` for your project, check those constants after copying. The code carries nothing specific to you; those constants do.
+`hooks/*.py` and `skills/` are safe to overwrite. Project-specific settings — your own roles, database clients, test layouts — live in `.claude/agents-best-teams.json`, which updates never touch. If an older version had you edit constants in `guard.py`, move them into that file: [hooks/README.md](hooks/README.md#файл-настроек-проекта).
 
 That last table row is genuinely awkward, and it is honest to say so: merging template changes into an already-adapted role is a job only a human can do. Advice — commit `.claude/` right after installing, so it stays visible which parts you changed and which are still stock.
 

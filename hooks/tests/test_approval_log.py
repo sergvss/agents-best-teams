@@ -89,6 +89,13 @@ class TestWhatGetsLogged(ApprovalLogTestCase):
     def test_sensitive_file_edits_are_recorded(self):
         found = self.log("Write", {"file_path": "config/.env"})
         self.assertEqual(len(found), 1)
+
+    def test_protection_settings_edit_is_recorded(self):
+        # Файл настроек расширяет зоны ролей; его правку подтверждает человек,
+        # и журнал обязан её сохранить - это изменение самой защиты.
+        found = self.log("Edit", {"file_path": ".claude/agents-best-teams.json"})
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["risk"], "P")
         self.assertEqual(found[0]["risk"], "P")
 
     def test_role_is_recorded_when_action_came_from_one(self):

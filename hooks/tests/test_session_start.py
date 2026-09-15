@@ -276,5 +276,36 @@ class TestOptOutSilencesOnlyWhatItPromises(SessionStartTestCase):
         self.assertIsNone(self.run_without_lang(self.cwd))
 
 
+class TestProjectConfigProblems(SessionStartTestCase):
+    """
+    Ошибки в .claude/agents-best-teams.json.
+
+    Хук при ошибке молча откатывается на умолчания, чтобы не запереть работу.
+    Молча - только для хука: человек обязан узнать, что его настройка не
+    действует, иначе он будет считать зону расширенной, а она нет.
+    """
+
+    def configure(self, content):
+        os.makedirs(os.path.join(self.cwd, ".claude"), exist_ok=True)
+        with open(os.path.join(self.cwd, ".claude", "agents-best-teams.json"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(content if isinstance(content, str) else json.dumps(content))
+
+    def test_problems_are_reported_at_session_start(self):
+        self.configure({"memory_matrix": {"code-reviewer": "create"}, "qa_tester_dirs": ["x"]})
+        prompt = run_hook(self.cwd) or ""
+        self.assertIn("agents-best-teams.json", prompt)
+        self.assertIn("code-reviewer", prompt)
+        self.assertIn("qa_tester_dirs", prompt)
+
+    def test_unreadable_file_is_reported(self):
+        self.configure("{not json")
+        self.assertIn("agents-best-teams.json", run_hook(self.cwd) or "")
+
+    def test_valid_file_adds_nothing_to_say(self):
+        self.configure({"qa_tester_write_segments": ["integration"]})
+        self.assertNotIn("agents-best-teams.json", run_hook(self.cwd) or "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1058,6 +1058,16 @@ class TestMessageCatalogue(unittest.TestCase):
                     "у ключа {} расходятся подстановки: {}".format(key, fields),
                 )
 
+    def test_no_placeholder_collides_with_msg_signature(self):
+        # msg(key, **fields): поле {key} передать нельзя - вызов падает с
+        # TypeError. Для хука падение - код 1, а код 1 вызов пропускает.
+        # Так и случилось с текстами проблем файла настроек: опечатка в файле
+        # тихо снимала защиту, пока тест не поймал падение.
+        for key, entry in self.messages.MESSAGES.items():
+            for language, text in entry.items():
+                with self.subTest(key=key, language=language):
+                    self.assertNotIn("{key}", text)
+
     def test_hooks_use_only_existing_keys(self):
         # Опечатка в ключе — KeyError вместо блокировки. Проверяем все хуки.
         hooks_dir = os.path.normpath(os.path.dirname(GUARD))
@@ -1472,6 +1482,151 @@ class TestShellContextWithinOneCommand(GuardTestCase):
     def test_prefix_assignment_is_not_remembered(self):
         # `X=1 cmd` задаёт X только для cmd, а не для следующих команд.
         self.assertBlocked(bash('D=build rm -rf x; rm -rf "$D/"'), "variable")
+
+
+class TestProjectConfig(unittest.TestCase):
+    """
+    Файл настроек проекта .claude/agents-best-teams.json.
+
+    Константы под проект жили в guard.py, а у плагина он лежит в кэше: правка
+    там молча пропадала при обновлении, и настроить зону можно было только
+    ручной установкой. Файл проекта обновление не трогает и работает при
+    любом способе установки.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.project = self._tmp.name.replace("\\", "/")
+        os.makedirs(os.path.join(self.project, ".claude"))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def configure(self, content):
+        path = os.path.join(self.project, ".claude", "agents-best-teams.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content if isinstance(content, str) else json.dumps(content))
+
+    def decision(self, payload):
+        payload = dict(payload, cwd=self.project)
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=self.project)
+        proc = subprocess.run([sys.executable, "-X", "utf8", GUARD],
+                              input=json.dumps(payload).encode("utf-8"),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
+        out = proc.stdout.decode("utf-8").strip()
+        return json.loads(out)["hookSpecificOutput"]["permissionDecision"] if out else None
+
+    # -- дополнения работают --------------------------------------------------
+
+    def test_qa_tester_directory_can_be_added(self):
+        payload = edit("integration/api_check.py", "Edit", "qa-tester")
+        self.assertEqual(self.decision(payload), "deny", "без файла каталог вне зоны")
+        self.configure({"qa_tester_write_segments": ["integration"]})
+        self.assertIsNone(self.decision(payload))
+
+    def test_qa_tester_file_pattern_can_be_added(self):
+        payload = edit("src/api.it.ts", "Write", "qa-tester")
+        self.assertEqual(self.decision(payload), "deny")
+        self.configure({"qa_tester_file_patterns": ["*.it.ts"]})
+        self.assertIsNone(self.decision(payload))
+
+    def test_browser_tester_directory_can_be_added(self):
+        # Путь без сегмента e2e: иначе он в зоне и без всякой настройки.
+        payload = edit("cypress/integration/login.cy.js", "Edit", "browser-tester")
+        self.assertEqual(self.decision(payload), "deny")
+        self.configure({"browser_tester_write_segments": ["cypress"]})
+        self.assertIsNone(self.decision(payload))
+
+    def test_custom_role_gets_the_memory_rule(self):
+        # Своя роль с полем memory получает Write и Edit в обход tools - ровно
+        # та дыра, ради которой правило существует. Без записи в матрице её не
+        # закрыть ничем.
+        self.configure({"memory_matrix": {"reviewer": "write", "release-manager": "create"}})
+        self.assertEqual(self.decision(edit("src/app.py", "Edit", "reviewer")), "deny")
+        self.assertIsNone(self.decision(edit(".claude/agent-memory/reviewer/n.md", "Write", "reviewer")))
+        self.assertEqual(self.decision(edit("deploy.sh", "Write", "release-manager")), "deny")
+        self.assertIsNone(self.decision(edit("deploy.sh", "Edit", "release-manager")))
+
+    def test_db_client_can_be_added(self):
+        payload = bash('duckdb app.db "DELETE FROM runs"')
+        self.assertIsNone(self.decision(payload), "без файла клиент не известен")
+        self.configure({"db_clients": ["duckdb"]})
+        self.assertEqual(self.decision(payload), "deny")
+
+    # -- ослабить защиту файлом нельзя ----------------------------------------
+
+    def test_file_cannot_weaken_a_builtin_role(self):
+        self.configure({"memory_matrix": {"code-reviewer": "create"}})
+        self.assertEqual(self.decision(edit("src/app.py", "Edit", "code-reviewer")), "deny")
+
+    def test_file_can_strengthen_a_builtin_role(self):
+        self.configure({"memory_matrix": {"devops": "write"}})
+        self.assertEqual(self.decision(edit("server.py", "Edit", "devops")), "deny")
+
+    def test_broken_file_falls_back_to_defaults(self):
+        # Отказ на каждой команде из-за опечатки запер бы и тот вызов, которым
+        # её исправляют. Умолчания строже любого дополнения, так что откат на
+        # них безопасен; о проблеме сообщает старт сессии.
+        for content in ["{not json", "[]", {"qa_tester_write_segments": "integration"},
+                        {"memory_matrix": {"reviewer": "wirte"}}, {"unknown_key": 1}]:
+            with self.subTest(content=content):
+                self.configure(content)
+                self.assertIsNone(self.decision(edit("tests/test_x.py", "Edit", "qa-tester")))
+                self.assertEqual(self.decision(edit("src/app.py", "Edit", "qa-tester")), "deny")
+
+    # -- сам файл защищён ---------------------------------------------------------
+
+    def test_writing_the_config_needs_a_human(self):
+        # Файл расширяет зоны. Правка без человека - способ расширить себе
+        # зону самому, поэтому любая запись в него открывает окно подтверждения.
+        for payload in [
+            edit(".claude/agents-best-teams.json", "Edit"),
+            edit(self.project + "/.claude/agents-best-teams.json", "Write", "dev-backend"),
+            bash("echo {} > .claude/agents-best-teams.json"),
+            bash("cd .claude && echo {} > agents-best-teams.json"),
+            bash("rm .claude/agents-best-teams.json"),
+            bash("sed -i s/a/b/ .claude/agents-best-teams.json"),
+        ]:
+            with self.subTest(payload=payload["tool_input"]):
+                self.assertEqual(self.decision(payload), "ask")
+
+    def test_restricted_role_cannot_touch_the_config_at_all(self):
+        self.assertEqual(self.decision(edit(".claude/agents-best-teams.json", "Edit", "qa-tester")), "deny")
+        self.assertEqual(self.decision(edit(".claude/agents-best-teams.json", "Write", "code-reviewer")), "deny")
+
+    def test_reading_the_config_is_free(self):
+        self.assertIsNone(self.decision(bash("cat .claude/agents-best-teams.json")))
+
+
+class TestQaTesterDefaultsCoverCommonStacks(GuardTestCase):
+    """
+    Умолчания зоны qa-tester - так, чтобы файл настроек был нужен как можно реже.
+
+    Каждое имя здесь - устойчивое соглашение стека, а не догадка. Широкие
+    шаблоны вроде «*test*» не берутся: они открыли бы роли продуктовые файлы
+    с этими буквами в имени.
+    """
+
+    def test_common_layouts_are_inside(self):
+        for path in [
+            "specs/user_flow.rb",
+            "src/__mocks__/api.ts",
+            "internal/parser/testdata/case1.json",
+            "spec/models/user_spec.rb",
+            "test/app_test.exs",
+            "MyApp.Tests/UserServiceTests.cs",
+            "MyApp.Tests/OrderTest.cs",
+            "MyAppTests/LoginTests.swift",
+        ]:
+            with self.subTest(path=path):
+                self.assertAllowed(edit(path, "Edit", "qa-tester"))
+
+    def test_lookalike_product_files_stay_outside(self):
+        for path in ["src/Latest.cs", "src/contests/list.py", "src/attestation.py",
+                     "app/fixtures/initial_data.json"]:
+            with self.subTest(path=path):
+                self.assertBlocked(edit(path, "Edit", "qa-tester"))
 
 
 if __name__ == "__main__":

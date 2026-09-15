@@ -86,6 +86,55 @@ MESSAGES = {
               "and a workaround you find will go unnoticed.",
     },
 
+    # -- файл настроек проекта .claude/agents-best-teams.json ----------------
+    # Окно подтверждения на запись в файл: его читает человек.
+    "config.protected_write": {
+        "ru": "CONFIRM [P/Privileged]: изменение настроек защиты - {path}.\n\n"
+              "Чем опасно: этот файл дополняет зоны записи ролей и матрицу разрешений. "
+              "Правка, сделанная агентом без человека, могла бы расширить роли её же зону.\n\n"
+              "Альтернативы:\n"
+              "  1. Правку просили вы - подтвердите\n"
+              "  2. Не просили - откажите: агент не должен менять настройки защиты сам",
+        "en": "CONFIRM [P/Privileged]: changing the protection settings - {path}.\n\n"
+              "Why it is risky: this file extends the roles' write areas and the permission "
+              "matrix. An edit an agent made without a human could widen a role's own area.\n\n"
+              "Alternatives:\n"
+              "  1. You asked for this change - confirm it\n"
+              "  2. You did not - decline: an agent should not change the protection settings "
+              "on its own",
+    },
+    # Проблемы в файле - по одной строке; собираются в session.config_problems.
+    "config.problem_unreadable": {
+        "ru": "файл не читается как JSON: {error}",
+        "en": "the file does not parse as JSON: {error}",
+    },
+    "config.problem_not_object": {
+        "ru": "в корне файла должен быть объект с ключами, а не список или значение",
+        "en": "the top level must be an object with keys, not a list or a value",
+    },
+    "config.problem_unknown_key": {
+        "ru": "неизвестный ключ `{name}`; допустимые: {keys}",
+        "en": "unknown key `{name}`; allowed: {keys}",
+    },
+    "config.problem_bad_list": {
+        "ru": "`{name}` должен быть списком непустых строк",
+        "en": "`{name}` must be a list of non-empty strings",
+    },
+    "config.problem_bad_matrix": {
+        "ru": "`memory_matrix` должен быть объектом вида {{\"роль\": \"write\" или \"create\"}}",
+        "en": "`memory_matrix` must be an object like {{\"role\": \"write\" or \"create\"}}",
+    },
+    "config.problem_bad_level": {
+        "ru": "роль `{role}`: уровень `{level}` неизвестен, допустимы write и create",
+        "en": "role `{role}`: level `{level}` is unknown, allowed are write and create",
+    },
+    "config.problem_weakens": {
+        "ru": "роль `{role}`: уровень `{level}` ослабляет встроенное ограничение - файл "
+              "может только дополнять и усиливать",
+        "en": "role `{role}`: level `{level}` weakens the built-in restriction - the file "
+              "can only extend and strengthen",
+    },
+
     # -- текст для агента рядом с окном подтверждения -----------------------
     # Причину окна агент не видит: её показывают только человеку. Без этого
     # текста при отказе человека агент остался бы без объяснения и без
@@ -670,6 +719,18 @@ MESSAGES = {
               "ready line `printf 'ru\\n' > .claude/.abt-lang` and stop there.\n\n"
               "Ask once and do not push: if the user says nothing, English stays, and the "
               "question can be revisited at any time.",
+    },
+
+    # Ошибки в файле настроек защиты - в начале сессии, как и дубль установки.
+    "session.config_problems": {
+        "ru": "В файле настроек защиты `{path}` есть ошибки. Эти записи не применяются, "
+              "вместо них действуют умолчания:\n\n{problems}\n\n"
+              "Скажи об этом пользователю одной фразой в начале ответа и предложи поправить "
+              "файл: пока ошибка есть, настройка, на которую он рассчитывает, не действует.",
+        "en": "The protection settings file `{path}` has errors. Those entries are not "
+              "applied, and the defaults are used instead:\n\n{problems}\n\n"
+              "Tell the user in one sentence at the start of your reply and offer to fix the "
+              "file: while the error is there, the setting they rely on does not take effect.",
     },
 
     # -- что делать после отказа: denial_guidance.py -------------------------

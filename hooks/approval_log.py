@@ -80,7 +80,10 @@ BASH_PATTERNS = [
     ("P", "secret-read", r"\b(cat|less|more|head|tail|type)\b[^|;&]*\.env\b"),
 ]
 
-SENSITIVE_PATH = re.compile(r"(^|/)(\.env|\.git/|\.claude/settings|id_rsa|\.pem$)", re.I)
+# .claude/agents-best-teams.json - настройки защиты: правка расширяет зоны ролей,
+# и хук открывает на неё окно подтверждения. Что хук останавливает, то журнал пишет.
+SENSITIVE_PATH = re.compile(
+    r"(^|/)(\.env|\.git/|\.claude/settings|\.claude/agents-best-teams\.json|id_rsa|\.pem$)", re.I)
 
 
 def classify(data):

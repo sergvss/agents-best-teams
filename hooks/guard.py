@@ -23,6 +23,7 @@ guard.py — защитные PreToolUse-хуки для команды аген
 import argparse
 import fnmatch
 import json
+import os
 import posixpath
 import re
 import shlex
@@ -143,9 +144,31 @@ BROWSER_TESTER_WRITE_SEGMENTS = ("e2e",)
 # __tests__/), и хук, не пускающий туда QA, отключили бы в первый же день.
 # Поэтому признака два: каталог по сегменту пути и имя тестового файла.
 # Константы под проект, как BROWSER_TESTER_WRITE_SEGMENTS.
-QA_TESTER_WRITE_SEGMENTS = ("tests", "test", "__tests__", "spec")
+#
+# Каталоги сравниваются без учёта регистра, имена файлов - с учётом: шаблоны
+# вроде *Test.cs держатся за заглавную T, и «Latest.cs» под них не попадает.
+# Широкие шаблоны вроде *test* не берутся намеренно - они открыли бы роли
+# продуктовые файлы, в имени которых просто есть эти буквы.
+QA_TESTER_WRITE_SEGMENTS = (
+    "tests", "test", "__tests__", "spec", "specs", "__mocks__", "testdata",
+)
 QA_TESTER_FILE_PATTERNS = (
     "test_*.py", "*_test.py", "conftest.py", "*_test.go", "*.test.*", "*.spec.*",
+    "*_spec.rb", "*_test.exs", "*Test.cs", "*Tests.cs", "*Tests.swift",
+)
+
+# Файл настроек проекта. Константы выше - умолчания; файл их дополняет и
+# переживает обновление плагина. Раньше константы правились в guard.py, а у
+# плагина он лежит в кэше, и правка молча пропадала при обновлении.
+PROJECT_CONFIG = ".claude/agents-best-teams.json"
+
+# Уровни ограничения роли в файле настроек: чего она лишена вне своей зоны.
+MATRIX_LEVELS = {"write": WRITE_TOOLS, "create": CREATE_TOOLS}
+
+# Ключи-списки файла настроек.
+CONFIG_LIST_KEYS = (
+    "db_clients", "browser_tester_write_segments",
+    "qa_tester_write_segments", "qa_tester_file_patterns",
 )
 
 
@@ -204,10 +227,10 @@ def in_qa_tester_zone(path):
         return True
     if in_browser_tester_zone(path):
         return False
-    parts = [part.lower() for part in path.split("/") if part]
+    parts = [part for part in path.split("/") if part]
     if not parts:
         return False
-    if any(part in QA_TESTER_WRITE_SEGMENTS for part in parts[:-1]):
+    if any(part.lower() in QA_TESTER_WRITE_SEGMENTS for part in parts[:-1]):
         return True
     return any(fnmatch.fnmatchcase(parts[-1], pattern) for pattern in QA_TESTER_FILE_PATTERNS)
 
@@ -223,6 +246,95 @@ def in_role_zone(path, agent):
     """True, если путь внутри собственной зоны записи роли."""
     zone = ROLE_WRITE_ZONES.get(agent)
     return bool(zone and zone(path))
+
+
+def project_root(data):
+    """Корень проекта: переменная Claude Code, а если её нет - рабочий каталог хука."""
+    return os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or os.getcwd()
+
+
+def read_project_config(directory):
+    """
+    Дополнения из .claude/agents-best-teams.json и список проблем в нём.
+
+    Файл только **дополняет** умолчания: добавляет роли, клиенты БД, каталоги
+    и шаблоны зон. Ослабить встроенное ограничение им нельзя - такая запись
+    пропускается. Иначе файл стал бы способом снять защиту одной строкой.
+
+    Ошибка в файле хук не ломает: неверная запись пропускается, остальные
+    действуют. Отказ на каждой команде из-за опечатки запер бы и тот вызов,
+    которым её исправляют, а умолчания строже любого дополнения, так что откат
+    на них безопасен. О проблемах сообщает session_start.py в начале сессии.
+    """
+    additions = {key: [] for key in CONFIG_LIST_KEYS}
+    additions["memory_matrix"] = {}
+    problems = []
+
+    try:
+        with open(os.path.join(directory, PROJECT_CONFIG), encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except FileNotFoundError:
+        return additions, problems
+    except (OSError, ValueError) as error:
+        problems.append(msg("config.problem_unreadable", error=error))
+        return additions, problems
+
+    if not isinstance(raw, dict):
+        problems.append(msg("config.problem_not_object"))
+        return additions, problems
+
+    for key, value in raw.items():
+        if key in CONFIG_LIST_KEYS:
+            if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
+                problems.append(msg("config.problem_bad_list", name=key))
+                continue
+            additions[key] = [v.strip() for v in value]
+        elif key == "memory_matrix":
+            if not isinstance(value, dict):
+                problems.append(msg("config.problem_bad_matrix"))
+                continue
+            for role, level in value.items():
+                if level not in MATRIX_LEVELS:
+                    problems.append(msg("config.problem_bad_level", role=role, level=level))
+                    continue
+                # Встроенную роль можно только усилить: новый набор отнятых
+                # инструментов обязан включать прежний целиком.
+                current = MEMORY_MATRIX.get(role)
+                if current is not None and not MATRIX_LEVELS[level] >= current:
+                    problems.append(msg("config.problem_weakens", role=role, level=level))
+                    continue
+                additions["memory_matrix"][role] = MATRIX_LEVELS[level]
+        else:
+            problems.append(msg("config.problem_unknown_key", name=key,
+                                keys=", ".join(CONFIG_LIST_KEYS + ("memory_matrix",))))
+    return additions, problems
+
+
+def apply_project_config(additions):
+    """Добавляет дополнения из файла настроек к умолчаниям на время этого вызова хука."""
+    global DB_CLIENTS, BROWSER_TESTER_WRITE_SEGMENTS
+    global QA_TESTER_WRITE_SEGMENTS, QA_TESTER_FILE_PATTERNS
+    MEMORY_MATRIX.update(additions["memory_matrix"])
+    DB_CLIENTS = DB_CLIENTS | {name.lower() for name in additions["db_clients"]}
+    BROWSER_TESTER_WRITE_SEGMENTS = BROWSER_TESTER_WRITE_SEGMENTS + tuple(
+        name.lower() for name in additions["browser_tester_write_segments"])
+    QA_TESTER_WRITE_SEGMENTS = QA_TESTER_WRITE_SEGMENTS + tuple(
+        name.lower() for name in additions["qa_tester_write_segments"])
+    QA_TESTER_FILE_PATTERNS = QA_TESTER_FILE_PATTERNS + tuple(additions["qa_tester_file_patterns"])
+
+
+def is_project_config(target, workdir=None):
+    """
+    True, если путь - файл настроек защиты.
+
+    Сравниваются два последних сегмента, а не путь целиком: так файл узнаётся и
+    по относительному пути, и по абсолютному, и после cd в той же команде.
+    """
+    raw = target.strip("\"'").replace("\\", "/")
+    if workdir and not is_absolute(raw):
+        raw = posixpath.join(workdir.replace("\\", "/"), raw)
+    parts = [part.lower() for part in posixpath.normpath(raw).split("/") if part]
+    return parts[-2:] == [".claude", "agents-best-teams.json"]
 
 
 def role_zone_hint(agent):
@@ -998,6 +1110,11 @@ def analyze_bash(command, enabled, agent="", depth=0):
         # Правило зоны роли требует agent_type, поэтому вызывается отдельно.
         if "memory" in enabled:
             check_memory_bash(tokens, agent, workdir)
+        # Файл настроек защиты - не зависит от списка правил: он настраивает
+        # сам хук, и правка без человека была бы способом расширить себе зону.
+        for target in written_paths(tokens):
+            if is_project_config(target, workdir):
+                confirm(msg("config.protected_write", path=target))
 
 
 def main():
@@ -1035,6 +1152,15 @@ def main():
     # Язык сообщений может быть задан файлом в проекте, а не только окружением.
     use_project(data.get("cwd") or "")
 
+    # Дополнения из файла настроек проекта - до любого правила. Сбой при разборе
+    # не должен ронять хук: падение даёт код 1, а код 1 вызов пропускает, то есть
+    # опечатка в файле тихо сняла бы защиту. Так и было бы без этой страховки -
+    # её добавили после того, как тест поймал именно такое падение.
+    try:
+        apply_project_config(read_project_config(project_root(data))[0])
+    except Exception:  # noqa: BLE001 - любая ошибка файла означает умолчания
+        pass
+
     tool_name = data.get("tool_name") or ""
     tool_input = data.get("tool_input") or {}
     agent = data.get("agent_type") or ""
@@ -1048,6 +1174,8 @@ def main():
     for name, rule in PATH_RULES.items():
         if name in enabled:
             rule(tool_name, file_path, agent)
+    if tool_name in WRITE_TOOLS and file_path and is_project_config(file_path):
+        confirm(msg("config.protected_write", path=file_path))
     emit_confirmation()
 
 
