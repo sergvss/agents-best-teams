@@ -448,6 +448,80 @@ def strip_wrappers(tokens):
     return tokens[i:]
 
 
+# Присваивание целиком: NAME=value. Значение может быть пустым - это важный
+# случай: `D=; rm -rf "$D/"` схлопывается в корень.
+ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
+
+# Обращение к переменной: $NAME или ${NAME}.
+VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def expand_assigned(tokens, assigned):
+    """
+    Подставляет переменные, заданные раньше в этой же команде.
+
+    Их значение хук видит дословно, в отличие от переменных окружения. Без
+    подстановки `SC=<временный каталог>; cp x "$SC/y"` читалось как запись в
+    непонятный "$SC/y" - и роль, которой временный каталог открыт, получала
+    отказ. Незнакомые переменные остаются как есть и проверяются строго.
+    """
+    if not assigned:
+        return tokens
+
+    def substitute(match):
+        name = match.group(1) or match.group(2)
+        return assigned[name] if name in assigned else match.group(0)
+
+    return [VARIABLE.sub(substitute, token) for token in tokens]
+
+
+def remember_assignments(tokens, assigned):
+    """
+    True, если сегмент состоит из одних присваиваний; их значения запоминаются.
+
+    Только отдельный сегмент: в `X=1 cmd` переменная живёт лишь для cmd и
+    следующим командам не видна. Значение, которое вычисляется при выполнении
+    (`$(...)`, другая переменная), хук не знает - такая переменная забывается,
+    и путь с ней проверяется строго.
+    """
+    body = tokens[1:] if tokens and tokens[0] == "export" else tokens
+    if not body or not all(ASSIGNMENT.match(token) for token in body):
+        return False
+    for token in body:
+        name, value = ASSIGNMENT.match(token).groups()
+        if any(char in value for char in "$`%"):
+            assigned.pop(name, None)
+        else:
+            assigned[name] = value
+    return True
+
+
+def is_absolute(path):
+    """Абсолютный путь POSIX или Windows: /x, C:/x, C:\\x."""
+    path = path.replace("\\", "/")
+    return path.startswith("/") or re.match(r"^[A-Za-z]:/", path) is not None
+
+
+def next_workdir(workdir, tokens):
+    """
+    Каталог после `cd` в этой же команде.
+
+    None означает каталог проекта или неизвестный каталог - тогда относительные
+    пути проверяются как пути проекта, то есть строго, как и раньше. Неизвестным
+    каталог становится после `cd -`, `cd ~` и `cd` по переменной, которой в
+    команде не присваивали значения.
+    """
+    args = [arg for arg in tokens[1:] if not arg.startswith("-")]
+    if not args:
+        return None
+    target = args[0].replace("\\", "/")
+    if target.startswith("~") or any(char in target for char in "$`%"):
+        return None
+    if is_absolute(target) or workdir is None:
+        return target
+    return posixpath.join(workdir, target)
+
+
 def basename(path):
     """Имя исполняемого файла без директории и расширения .exe."""
     name = path_basename(path)
@@ -568,7 +642,7 @@ def modifies_existing(tokens, target):
     return False
 
 
-def check_memory_bash(tokens, agent):
+def check_memory_bash(tokens, agent, workdir=None):
     """
     Та же защита зоны роли, но со стороны Bash.
 
@@ -587,21 +661,30 @@ def check_memory_bash(tokens, agent):
     edits_existing_files_allowed = not (denied & {"Edit", "MultiEdit"})
 
     for target in written_paths(tokens):
+        raw = target.strip("\"'").replace("\\", "/")
+        # После `cd <каталог>` в той же команде относительный путь считается от
+        # него: `cd <временный каталог> && cp a b` пишет туда, а не в проект.
+        if workdir and not is_absolute(raw):
+            raw = posixpath.join(workdir.replace("\\", "/"), raw)
         # lstrip("./") здесь недопустим: он снимает не префикс, а любые символы
         # из набора, и съедает точку у .claude, ломая проверку своей же зоны.
-        path = "/" + posixpath.normpath(target.strip("\"'").replace("\\", "/")).lstrip("/")
+        path = "/" + posixpath.normpath(raw).lstrip("/")
         if in_own_memory(path, agent):
             continue
         if in_role_zone(path, agent):
             continue
         if edits_existing_files_allowed and modifies_existing(tokens, target):
             continue
+        # Путь с переменной, которой в команде не присваивали значения, хук
+        # проверить не может. Роль из живого прогона приписала такой отказ
+        # классификатору разрешений - текст обязан назвать настоящую причину.
+        unresolved = msg("memory.unresolved_variable") if any(c in target for c in "$`%") else ""
         deny(msg(
             "memory.shell_write",
             agent=agent,
             target=target,
             extra=role_zone_hint(agent),
-        ))
+        ) + unresolved)
 
 
 def check_fs(tokens):
@@ -889,9 +972,20 @@ def analyze_bash(command, enabled, agent="", depth=0):
     if depth > MAX_NESTING:
         return
     command = strip_heredoc_bodies(command)
+    # Контекст одной команды: переменные, присвоенные в ней, и каталог после cd.
+    # Каждый сегмент по отдельности этого не знает, а живой прогон показал, что
+    # оболочкой пишут именно так: сначала SC=<каталог> или cd, потом запись.
+    assigned = {}
+    workdir = None
     for tokens in split_segments(command):
+        tokens = expand_assigned(tokens, assigned)
+        if remember_assignments(tokens, assigned):
+            continue
         tokens = strip_wrappers(tokens)
         if not tokens:
+            continue
+        if basename(tokens[0]) == "cd":
+            workdir = next_workdir(workdir, tokens)
             continue
         if basename(tokens[0]) in SHELL_WRAPPERS:
             for index in range(1, len(tokens) - 1):
@@ -903,7 +997,7 @@ def analyze_bash(command, enabled, agent="", depth=0):
                 rule(tokens)
         # Правило зоны роли требует agent_type, поэтому вызывается отдельно.
         if "memory" in enabled:
-            check_memory_bash(tokens, agent)
+            check_memory_bash(tokens, agent, workdir)
 
 
 def main():

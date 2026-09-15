@@ -1400,5 +1400,79 @@ class TestQaTesterZone(GuardTestCase):
         self.assertNotIn("only appeared because", reason)
 
 
+class TestShellContextWithinOneCommand(GuardTestCase):
+    """
+    Переменные и cd, заданные раньше в той же команде.
+
+    Найдено живым прогоном 1.17.0: qa-tester мутировала копию во временном
+    каталоге, как и положено, но писала туда самыми обычными для оболочки
+    способами - `SC=<каталог>; cp ... "$SC/x"` и `cd <каталог> && cp ... x`.
+    Хук разбирал сегменты по отдельности, не видел ни присваивания, ни cd, и
+    отказывал в зоне, которая роли открыта. Роль тратила ходы на обход и
+    упёрлась в лимит.
+
+    Подставляются только значения, заданные в этой же команде: их хук видит
+    дословно. Переменные окружения и прошлых команд по-прежнему не видны, и
+    путь с ними проверяется строго.
+    """
+
+    AGENT = "qa-tester"
+    TEMP = tempfile.gettempdir().replace("\\", "/")
+
+    def test_variable_assigned_in_the_command_is_resolved(self):
+        for command in [
+            'SC="{t}/abt-mut"; cp client/game/step.js "$SC/step.js"'.format(t=self.TEMP),
+            "SC={t}/abt-mut && cp step.js ${{SC}}/game/step.js".format(t=self.TEMP),
+            "export SC={t}/abt-mut; echo x > $SC/probe.txt".format(t=self.TEMP),
+            "A={t}; B=$A/abt-mut; cat > $B/x.py".format(t=self.TEMP),
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command, self.AGENT))
+
+    def test_cd_in_the_command_is_followed(self):
+        for command in [
+            'cd "{t}/abt-mut" && cp game/step.js game/step.js.orig'.format(t=self.TEMP),
+            "cd {t} && cd abt-mut && echo x > probe.txt".format(t=self.TEMP),
+            "cd .claude/agent-memory/qa-tester && echo x > note.md",
+        ]:
+            with self.subTest(command=command):
+                self.assertAllowed(bash(command, self.AGENT))
+
+    def test_cd_does_not_open_product_code(self):
+        for command in [
+            "cd {t} && cd - && cat > src/app.py".format(t=self.TEMP),
+            "cd $UNKNOWN_DIR && cat > src/app.py",
+            "cd client/game && cp step.js step.js.bak",
+        ]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command, self.AGENT), self.AGENT)
+
+    def test_unknown_variable_stays_strict_and_says_why(self):
+        for command in ['cat > "$UNSET_DIR/x.py"', "SC=$(mktemp -d); cat > $SC/x.py"]:
+            with self.subTest(command=command):
+                decision, reason, _ = decide(bash(command, self.AGENT))
+                self.assertEqual(decision, "deny")
+                # Роль из живого прогона приписала такой отказ классификатору.
+                # Текст обязан сказать, в чём дело, - иначе агент гадает.
+                self.assertIn("variable", reason)
+
+    def test_assigned_variable_closes_env_bypass(self):
+        # Раньше `F=.env; echo K=1 > "$F"` проходил: цель читалась как "$F".
+        self.assertBlocked(bash('F=.env; echo K=1 > "$F"'))
+
+    def test_assigned_variable_reaches_the_fs_rule(self):
+        # Пустое значение в той же команде - ровно тот случай, ради которого
+        # правило боится переменных: путь схлопывается в корень.
+        self.assertBlocked(bash('D=; rm -rf "$D/"'), "P/Privileged")
+        # А заданное дословно безопасное значение больше не повод отказывать.
+        self.assertAllowed(bash("D=build/tmp; rm -rf $D"))
+        # Не заданная в команде переменная - по-прежнему отказ.
+        self.assertBlocked(bash('rm -rf "$BUILD_DIR/"'), "variable")
+
+    def test_prefix_assignment_is_not_remembered(self):
+        # `X=1 cmd` задаёт X только для cmd, а не для следующих команд.
+        self.assertBlocked(bash('D=build rm -rf x; rm -rf "$D/"'), "variable")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

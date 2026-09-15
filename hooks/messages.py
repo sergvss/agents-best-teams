@@ -120,6 +120,15 @@ MESSAGES = {
               "directory. Run mutation checks on a copy of the module in the temp directory, "
               "never on the original: an interrupted copy leaves no broken code behind",
     },
+    # Дописывается к memory.shell_write, когда в пути осталась переменная.
+    "memory.unresolved_variable": {
+        "ru": "\n\nВ пути осталась переменная, значение которой хук не видит: в этой же "
+              "команде ей не присвоено значение. Напиши путь целиком или присвой "
+              "переменную в той же команде.",
+        "en": "\n\nThe path still contains a variable whose value the hook cannot see: it is "
+              "not assigned in this same command. Write the full path, or assign the "
+              "variable in the same command.",
+    },
     "memory.shell_write": {
         "ru": "BLOCKED [W/Write]: {agent} пытается записать {target} командой оболочки.\n\n"
               "Причина блокировки: этой роли запись вне своей зоны не положена по матрице "
