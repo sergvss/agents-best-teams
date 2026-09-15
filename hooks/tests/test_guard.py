@@ -47,6 +47,28 @@ def run_hook(payload, rules=None):
     return json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
 
 
+def decide(payload, rules=None):
+    """
+    Решение хука целиком: (None | "deny" | "ask", текст для человека, текст для агента).
+
+    run_hook возвращает только текст, и по нему отказ неотличим от окна
+    подтверждения: оба приходят с причиной. Пока исходов было два, этого
+    хватало; с появлением "ask" проверка «есть причина» стала бы проходить
+    и там, где хук больше не блокирует.
+    """
+    cmd = [sys.executable, "-X", "utf8", GUARD]
+    if rules is not None:
+        cmd += ["--rules", rules]
+    proc = subprocess.run(cmd, input=json.dumps(payload).encode("utf-8"),
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out = proc.stdout.decode("utf-8").strip()
+    if not out:
+        return None, None, None
+    block = json.loads(out)["hookSpecificOutput"]
+    return (block.get("permissionDecision"), block.get("permissionDecisionReason"),
+            block.get("additionalContext"))
+
+
 def bash(command, agent=None):
     payload = {"tool_name": "Bash", "tool_input": {"command": command}}
     if agent:
@@ -67,14 +89,23 @@ def edit(file_path, tool="Edit", agent=None):
 
 class GuardTestCase(unittest.TestCase):
     def assertBlocked(self, payload, marker=None):
-        reason = run_hook(payload)
-        self.assertIsNotNone(reason, "ожидалась блокировка, команда прошла: {}".format(payload))
+        decision, reason, _ = decide(payload)
+        self.assertEqual(decision, "deny",
+                         "ожидался отказ, получено {!r}: {}".format(decision, payload))
+        if marker:
+            self.assertIn(marker, reason)
+
+    def assertConfirmed(self, payload, marker=None):
+        # Окно подтверждения Claude Code: вызов не выполнится без «да» человека.
+        decision, reason, _ = decide(payload)
+        self.assertEqual(decision, "ask",
+                         "ожидалось окно подтверждения, получено {!r}: {}".format(decision, payload))
         if marker:
             self.assertIn(marker, reason)
 
     def assertAllowed(self, payload):
-        reason = run_hook(payload)
-        self.assertIsNone(reason, "ожидалось разрешение, но заблокировано:\n{}".format(reason))
+        decision, reason, _ = decide(payload)
+        self.assertIsNone(decision, "ожидалось разрешение, получено {!r}:\n{}".format(decision, reason))
 
 
 class TestFilesystem(GuardTestCase):
@@ -134,7 +165,10 @@ class TestFilesystem(GuardTestCase):
 
 
 class TestGit(GuardTestCase):
-    def test_blocks_destructive(self):
+    # У этих операций есть законные случаи, поэтому хук не отказывает, а
+    # открывает окно подтверждения Claude Code. Решает человек нажатием, и
+    # агент не может это нажатие подделать - в отличие от «да» в тексте.
+    def test_destructive_asks_for_confirmation(self):
         for command, marker in [
             ("git push --force origin main", "force"),
             ("git push -f", "force"),
@@ -145,9 +179,9 @@ class TestGit(GuardTestCase):
             ("git checkout -- .", "checkout"),
         ]:
             with self.subTest(command=command):
-                self.assertBlocked(bash(command), marker)
+                self.assertConfirmed(bash(command), marker)
 
-    def test_blocks_force_by_alternative_syntax(self):
+    def test_force_by_alternative_syntax_asks_too(self):
         # Плюс перед рефспеком — тот же force, только другим синтаксисом,
         # а --mirror ещё и удаляет на сервере ветки, которых нет локально.
         for command in [
@@ -160,7 +194,7 @@ class TestGit(GuardTestCase):
             "git push origin :feature",
         ]:
             with self.subTest(command=command):
-                self.assertBlocked(bash(command), "P/Privileged")
+                self.assertConfirmed(bash(command), "P/Privileged")
 
     def test_allows_safe(self):
         for command in [
@@ -186,13 +220,22 @@ class TestGit(GuardTestCase):
 
 
 class TestSql(GuardTestCase):
-    def test_blocks_unsafe(self):
+    def test_schema_destruction_asks_for_confirmation(self):
+        # DROP и TRUNCATE бывают законными - в миграции, на стенде. Решает человек.
         for command in [
-            'psql -c "DELETE FROM users"',
-            'mysql -e "UPDATE users SET active = 0"',
             'psql -c "TRUNCATE TABLE logs"',
             'sqlite3 app.db "DROP TABLE users"',
             'psql -c "DROP DATABASE prod"',
+        ]:
+            with self.subTest(command=command):
+                self.assertConfirmed(bash(command), "P/Privileged")
+
+    def test_rows_without_where_stay_hard(self):
+        # Запрос без WHERE законных случаев почти не имеет: это ошибка, а не
+        # решение, и подтверждать её окном значит учить нажимать «да».
+        for command in [
+            'psql -c "DELETE FROM users"',
+            'mysql -e "UPDATE users SET active = 0"',
             # Клиент по абсолютному пути и с расширением .exe — тот же клиент.
             '/usr/bin/psql -c "DELETE FROM users"',
             'C:/tools/psql.exe -c "DELETE FROM users"',
@@ -214,7 +257,7 @@ class TestSql(GuardTestCase):
             'sqlite3 app.db "ALTER TABLE users DROP CONSTRAINT fk_org"',
         ]:
             with self.subTest(command=command):
-                self.assertBlocked(bash(command), "P/Privileged")
+                self.assertConfirmed(bash(command), "P/Privileged")
 
     def test_drop_is_not_a_closed_list_of_object_kinds(self):
         # Закрытый список дважды оказывался уже обещания в документации:
@@ -229,7 +272,7 @@ class TestSql(GuardTestCase):
             'psql -c "DROP TABLE IF EXISTS legacy"',
         ]:
             with self.subTest(command=command):
-                self.assertBlocked(bash(command), "P/Privileged")
+                self.assertConfirmed(bash(command), "P/Privileged")
 
     def test_non_destructive_ddl_still_passes(self):
         # Расширение правила не должно превратить его в запрет на DDL вообще:
@@ -562,7 +605,6 @@ class TestContract(GuardTestCase):
         """
         cases = [
             bash("rm -rf /"),
-            bash("git push --force origin main"),
             bash('psql -c "DELETE FROM users"'),
             bash("echo K=1 > .env"),
             edit(".env", "Write"),
@@ -617,20 +659,22 @@ class TestShellParsingBypasses(GuardTestCase):
             "sh -c 'rm -rf /'",
             'bash -c "rm -rf /"',
             "sh -c 'sh -c \"rm -rf /\"'",
-            "sudo sh -c 'git push --force'",
         ]:
             with self.subTest(command=command):
                 self.assertBlocked(bash(command))
+        # Разбор обязан дойти до git и внутри вложенной оболочки.
+        self.assertConfirmed(bash("sudo sh -c 'git push --force'"))
 
     def test_absolute_and_prefixed_command_paths(self):
         for command in [
             "/bin/rm -rf /",
-            "/usr/bin/git reset --hard",
             "LC_ALL=C rm -rf /",          # присваивание без env перед командой
-            "CI=true git reset --hard",
         ]:
             with self.subTest(command=command):
                 self.assertBlocked(bash(command))
+        for command in ["/usr/bin/git reset --hard", "CI=true git reset --hard"]:
+            with self.subTest(command=command):
+                self.assertConfirmed(bash(command))
 
     def test_git_forms_missed_before(self):
         for command in [
@@ -640,7 +684,7 @@ class TestShellParsingBypasses(GuardTestCase):
             "git restore --worktree .",
         ]:
             with self.subTest(command=command):
-                self.assertBlocked(bash(command), "W/Write")
+                self.assertConfirmed(bash(command), "W/Write")
 
     def test_sql_statement_level_checks(self):
         for command in [
@@ -1140,9 +1184,10 @@ class TestBackticksAreCommands(GuardTestCase):
     """
 
     def test_backticks_run_a_command_like_dollar_parens(self):
-        for command in ("echo `rm -rf /`", "x=`rm -rf /`", "echo `git push --force`"):
+        for command in ("echo `rm -rf /`", "x=`rm -rf /`"):
             with self.subTest(command=command):
                 self.assertBlocked(bash(command))
+        self.assertConfirmed(bash("echo `git push --force`"))
 
     def test_dollar_parens_still_blocked(self):
         self.assertBlocked(bash("echo $(rm -rf /)"))
@@ -1209,6 +1254,58 @@ class TestIncompleteInstallFailsClosed(GuardTestCase):
             self.assertIn("hooks/*.py", text)
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+
+class TestConfirmationInsteadOfDenial(GuardTestCase):
+    """
+    Окно подтверждения Claude Code вместо отказа - для операций с законными случаями.
+
+    Отказ ничем не снимается, и агент, упёршись, мог только сказать «выполните
+    сами». Окно ставит решение туда, где оно и должно быть, - в руки человека,
+    причём даже в auto mode: классификатор такой вызов молча одобрить не может.
+    """
+
+    def test_deny_beats_confirmation_in_one_command(self):
+        # Иначе первое правило открыло бы окно, и после «да» вторая команда
+        # выполнилась бы непроверенной. Порядок сегментов роли не играет.
+        for command in ["git push --force && rm -rf /", "rm -rf / ; git push --force",
+                        "git reset --hard; echo K=1 > .env"]:
+            with self.subTest(command=command):
+                self.assertBlocked(bash(command))
+
+    def test_confirmation_payload_shape(self):
+        decision, reason, context = decide(bash("git reset --hard"))
+        self.assertEqual(decision, "ask")
+        # Причину видит человек в окне: ему сообщают, что подтверждает, а не
+        # что «заблокировано» - блокировки не будет, если он согласится.
+        self.assertTrue(reason.startswith("CONFIRM ["), reason[:60])
+        self.assertNotIn("BLOCKED", reason)
+
+    def test_the_agent_gets_its_own_text(self):
+        # Причину окна агент не видит - это сказано в документации Claude Code.
+        # Без отдельного текста при отказе человека он остался бы без объяснения
+        # и без альтернатив.
+        _, reason, context = decide(bash("git push --force origin main"))
+        self.assertTrue(context, "агенту нужен свой текст рядом с результатом")
+        self.assertIn("--force-with-lease", context)
+        self.assertIn("declined", context)
+
+    def test_the_window_does_not_tell_the_user_to_ask_the_user(self):
+        # Хвост «спроси пользователя» написан для агента. В окне его прочитал
+        # бы сам человек - и получил бы бессмыслицу.
+        _, reason, _ = decide(bash("git clean -fd"))
+        self.assertNotIn("ask the user", reason)
+
+    def test_one_window_for_a_repeated_rule(self):
+        _, reason, _ = decide(bash("git reset --hard && git reset --hard"))
+        self.assertEqual(reason.count("CONFIRM ["), 1, reason)
+
+    def test_hard_rules_stay_hard(self):
+        for payload in [bash("rm -rf /"), bash("rm -rf \"$DIR\""),
+                        bash('psql -c "DELETE FROM users"'), bash("echo K=1 > .env"),
+                        edit(".env", "Write"), edit("src/app.py", "Edit", "code-reviewer")]:
+            with self.subTest(payload=payload["tool_input"]):
+                self.assertBlocked(payload)
 
 
 if __name__ == "__main__":

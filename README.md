@@ -80,7 +80,8 @@ Not everything starts working the moment you install. The precise picture:
 
 | | When | What it is |
 |---|---|---|
-| **Protective hooks** | immediately | Block filesystem destruction, force-push, writes to `.env`, SQL without `WHERE`; log privileged actions and stop blind retries of a failing command |
+| **Protective hooks** | immediately | Block filesystem destruction, writes to `.env` and SQL without `WHERE`; before force-push, `reset --hard` or `DROP` they ask you in the Claude Code permission prompt; log privileged actions and stop blind retries of a failing command |
+| **After-denial rule** | next start | When auto mode denies an action, the agent asks you through the question menu instead of telling you to run it yourself. A role hands the request to the main conversation: subagents cannot ask |
 | **Checklists as skills** | immediately | Claude pulls them in when relevant, or invoke them with `/` |
 | **Team setup prompt** | next start | It is a `SessionStart` hook: the event already fired if you installed mid-session. `/clear` is enough — no need to restart entirely — but `/reload-plugins` will not do it |
 | **Team roles** | manual only | `setup-agent-team`, see below |
@@ -89,7 +90,7 @@ Not everything starts working the moment you install. The precise picture:
 
 **Activation comes first.** After installing, Claude Code prints either `Plugin is now active.` or `Run /reload-plugins to activate.` In the second case nothing works until you run that command.
 
-**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are ten of them per configuration file, and fixing one block leaves the log, the retry counter and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
+**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are twelve of them per configuration file, and fixing one block leaves the log, the retry counter and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
 
 ### The roles need a separate step
 

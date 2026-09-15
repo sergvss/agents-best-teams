@@ -203,8 +203,9 @@ class TestJournalAgreesWithTheHook(unittest.TestCase):
 
     GUARD = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "guard.py")
 
-    # Что хук блокирует, то журнал обязан писать классом P; что пропускает -
-    # классом ниже. Формы взяты по смыслу: +ветка это force, :ветка - удаление.
+    # Что хук останавливает - отказом или окном подтверждения, - то журнал
+    # обязан писать классом P; что пропускает - классом ниже. Окно тоже
+    # остановка: вызов не выполнится, пока человек не нажмёт «да». Формы взяты по смыслу: +ветка это force, :ветка - удаление.
     FORMS = [
         "git push --force origin main",
         "git push -f",
@@ -219,7 +220,7 @@ class TestJournalAgreesWithTheHook(unittest.TestCase):
         "git push --follow-tags",
     ]
 
-    def hook_blocks(self, command):
+    def hook_stops(self, command):
         payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": "."}
         proc = subprocess.run(
             [sys.executable, "-X", "utf8", self.GUARD],
@@ -232,7 +233,7 @@ class TestJournalAgreesWithTheHook(unittest.TestCase):
         if not out:
             return False
         decision = json.loads(out)["hookSpecificOutput"].get("permissionDecision")
-        return decision == "deny"
+        return decision in ("deny", "ask")
 
     def journal_risk(self, command):
         sys.path.insert(0, os.path.normpath(os.path.dirname(self.GUARD)))
@@ -243,12 +244,12 @@ class TestJournalAgreesWithTheHook(unittest.TestCase):
 
     def test_blocked_pushes_are_privileged_and_allowed_ones_are_not(self):
         for command in self.FORMS:
-            blocked = self.hook_blocks(command)
+            stopped = self.hook_stops(command)
             risk = self.journal_risk(command)
-            with self.subTest(command=command, blocked=blocked):
-                if blocked:
+            with self.subTest(command=command, stopped=stopped):
+                if stopped:
                     self.assertEqual(risk, "P",
-                                     "хук блокирует, журнал обязан писать P")
+                                     "хук останавливает, журнал обязан писать P")
                 else:
                     self.assertNotEqual(risk, "P",
                                         "хук пропускает - P завышает риск и "

@@ -86,6 +86,25 @@ MESSAGES = {
               "and a workaround you find will go unnoticed.",
     },
 
+    # -- текст для агента рядом с окном подтверждения -----------------------
+    # Причину окна агент не видит: её показывают только человеку. Без этого
+    # текста при отказе человека агент остался бы без объяснения и без
+    # альтернатив. Написан так, чтобы быть верным при любом ответе.
+    "guard.confirm_context": {
+        "ru": "Защитный хук agents-best-teams не заблокировал этот вызов, а попросил "
+              "пользователя подтвердить его в окне Claude Code. Пользователь видел такой "
+              "текст:\n\n{details}\n\n"
+              "Если пользователь отказал - не повторяй действие в другой форме и не ищи "
+              "обход: предложи одну из альтернатив или спроси, как поступить. "
+              "Если подтвердил - продолжай.",
+        "en": "The agents-best-teams protective hook did not block this call: it asked the "
+              "user to confirm it in the Claude Code permission prompt. The user saw this "
+              "text:\n\n{details}\n\n"
+              "If the user declined, do not repeat the action in another form and do not "
+              "look for a way around it: offer one of the alternatives or ask how to "
+              "proceed. If the user approved, carry on.",
+    },
+
     # -- правило memory ------------------------------------------------------
     "memory.extra_browser_tester": {
         "ru": " и каталог E2E целиком",
@@ -179,60 +198,61 @@ MESSAGES = {
     },
 
     # -- правило git ---------------------------------------------------------
+    # Семь сообщений ниже - правила git и разрушения схемы SQL - показываются
+    # не агенту, а человеку, в окне подтверждения Claude Code: у этих операций
+    # есть законные случаи, и хук не отказывает, а спрашивает. Поэтому CONFIRM,
+    # а не BLOCKED, и дефис вместо длинного тире - это текст интерфейса.
     "git.push_mirror": {
-        "ru": "BLOCKED [P/Privileged]: git push --mirror — приведение удалённого репозитория "
+        "ru": "CONFIRM [P/Privileged]: git push --mirror - приведение удалённого репозитория "
               "к точной копии локального.\n\n"
-              "Причина блокировки: перезаписываются все ветки и теги, а ветки, которых нет "
+              "Чем опасно: перезаписываются все ветки и теги, а ветки, которых нет "
               "локально, удаляются на сервере. Одна команда затрагивает работу всей команды.\n\n"
               "Альтернативы:\n"
-              "  1. git push origin <ветка> — отправить конкретную ветку\n"
-              "  2. git push --tags — если нужны именно теги\n"
-              "  3. Если зеркалирование действительно нужно — выполни команду сам, вне агента",
-        "en": "BLOCKED [P/Privileged]: git push --mirror — forcing the remote repository into "
+              "  1. git push origin <ветка> - отправить конкретную ветку\n"
+              "  2. git push --tags - если нужны именно теги",
+        "en": "CONFIRM [P/Privileged]: git push --mirror - forcing the remote repository into "
               "an exact copy of the local one.\n\n"
-              "Why this is blocked: every branch and tag is overwritten, and branches that do "
+              "Why it is risky: every branch and tag is overwritten, and branches that do "
               "not exist locally are deleted on the server. One command reaches everyone's "
               "work.\n\n"
               "Alternatives:\n"
-              "  1. git push origin <branch> — push one specific branch\n"
-              "  2. git push --tags — if tags are what you actually need\n"
-              "  3. If mirroring really is required — run the command yourself, outside the "
-              "agent",
+              "  1. git push origin <branch> - push one specific branch\n"
+              "  2. git push --tags - if tags are what you actually need",
     },
     "git.push_delete": {
-        "ru": "BLOCKED [P/Privileged]: git push --delete — удаление ветки на сервере.\n\n"
-              "Причина блокировки: ветка исчезает у всех, кто с ней работает. "
-              "Класс P по principles/03 — подтверждать каждый раз, даже если разрешали раньше.\n\n"
+        "ru": "CONFIRM [P/Privileged]: git push --delete - удаление ветки на сервере.\n\n"
+              "Чем опасно: ветка исчезает у всех, кто с ней работает. "
+              "Класс P по principles/03 - подтверждать каждый раз, даже если разрешали раньше.\n\n"
               "Альтернативы:\n"
-              "  1. Убедись, что ветка влита, и удали её сам через интерфейс хостинга\n"
+              "  1. Убедиться, что ветка влита, и удалить её через интерфейс хостинга\n"
               "  2. Локальную копию можно удалить безопасно: git branch -d <ветка>\n"
-              "  3. Если ветка нужна как архив — поставь на неё тег перед удалением",
-        "en": "BLOCKED [P/Privileged]: git push --delete — deleting a branch on the server.\n\n"
-              "Why this is blocked: the branch disappears for everyone working on it. Risk "
-              "class P in principles/03 — confirm every single time, even if it was allowed "
+              "  3. Если ветка нужна как архив - поставить на неё тег перед удалением",
+        "en": "CONFIRM [P/Privileged]: git push --delete - deleting a branch on the server.\n\n"
+              "Why it is risky: the branch disappears for everyone working on it. Risk "
+              "class P in principles/03 - confirm every single time, even if it was allowed "
               "before.\n\n"
               "Alternatives:\n"
-              "  1. Check the branch is merged and delete it yourself through the hosting UI\n"
+              "  1. Check the branch is merged and delete it through the hosting UI\n"
               "  2. The local copy can be removed safely: git branch -d <branch>\n"
-              "  3. If the branch is worth keeping as an archive — tag it before deleting",
+              "  3. If the branch is worth keeping as an archive - tag it before deleting",
     },
     "git.push_force": {
-        "ru": "BLOCKED [P/Privileged]: {syntax} — принудительная перезапись истории.\n\n"
-              "Причина блокировки: теряются коммиты, которые уже видят другие разработчики. "
+        "ru": "CONFIRM [P/Privileged]: {syntax} - принудительная перезапись истории.\n\n"
+              "Чем опасно: теряются коммиты, которые уже видят другие разработчики. "
               "Восстановить их можно только из чужих локальных копий.\n"
               "Рефспек с плюсом впереди (+main) означает ровно то же, что и --force.\n\n"
               "Альтернативы:\n"
-              "  1. git push --force-with-lease — блокируется, если кто-то запушил после тебя\n"
-              "  2. git push без флага и без плюса — если конфликта нет\n"
-              "  3. git revert вместо перезаписи — история остаётся целой",
-        "en": "BLOCKED [P/Privileged]: {syntax} — force-overwriting history.\n\n"
-              "Why this is blocked: commits other developers can already see are lost. The "
+              "  1. git push --force-with-lease - откажет, если кто-то запушил после тебя\n"
+              "  2. git push без флага и без плюса - если конфликта нет\n"
+              "  3. git revert вместо перезаписи - история остаётся целой",
+        "en": "CONFIRM [P/Privileged]: {syntax} - force-overwriting history.\n\n"
+              "Why it is risky: commits other developers can already see are lost. The "
               "only way back is somebody else's local copy.\n"
               "A refspec with a leading plus (+main) means exactly the same thing as --force.\n\n"
               "Alternatives:\n"
-              "  1. git push --force-with-lease — refuses if someone pushed after you\n"
-              "  2. git push with no flag and no plus — if there is no conflict\n"
-              "  3. git revert instead of rewriting — the history stays intact",
+              "  1. git push --force-with-lease - refuses if someone pushed after you\n"
+              "  2. git push with no flag and no plus - if there is no conflict\n"
+              "  3. git revert instead of rewriting - the history stays intact",
     },
     # Подставляется внутрь git.push_force — значит, тоже обязано быть на языке
     # сообщения. Иначе английский текст получает русское «<ветка>» внутри.
@@ -245,54 +265,54 @@ MESSAGES = {
         "en": "git push --force",
     },
     "git.reset_hard": {
-        "ru": "BLOCKED [W/Write]: git reset --hard — сброс рабочей копии без возможности отката.\n\n"
-              "Причина блокировки: незакоммиченные изменения исчезают безвозвратно, "
+        "ru": "CONFIRM [W/Write]: git reset --hard - сброс рабочей копии без возможности отката.\n\n"
+              "Чем опасно: незакоммиченные изменения исчезают безвозвратно, "
               "git их нигде не сохраняет.\n\n"
               "Альтернативы:\n"
-              "  1. git stash — спрятать изменения с возможностью вернуть\n"
-              "  2. git checkout <файл> — откатить точечно, а не всё сразу\n"
-              "  3. Если сброс действительно нужен — сделай git stash перед ним",
-        "en": "BLOCKED [W/Write]: git reset --hard — resetting the working copy with no way "
+              "  1. git stash - спрятать изменения с возможностью вернуть\n"
+              "  2. git checkout <файл> - откатить точечно, а не всё сразу\n"
+              "  3. Если сброс действительно нужен - сначала git stash",
+        "en": "CONFIRM [W/Write]: git reset --hard - resetting the working copy with no way "
               "back.\n\n"
-              "Why this is blocked: uncommitted changes are gone for good; git keeps no copy "
+              "Why it is risky: uncommitted changes are gone for good; git keeps no copy "
               "of them anywhere.\n\n"
               "Alternatives:\n"
-              "  1. git stash — put the changes aside so they can be restored\n"
-              "  2. git checkout <file> — revert one file instead of everything\n"
-              "  3. If the reset really is needed — run git stash first",
+              "  1. git stash - put the changes aside so they can be restored\n"
+              "  2. git checkout <file> - revert one file instead of everything\n"
+              "  3. If the reset really is needed - run git stash first",
     },
     "git.clean": {
-        "ru": "BLOCKED [W/Write]: git clean — удаление неотслеживаемых файлов.\n\n"
-              "Причина блокировки: под удаление попадают .env, локальные конфиги "
+        "ru": "CONFIRM [W/Write]: git clean - удаление неотслеживаемых файлов.\n\n"
+              "Чем опасно: под удаление попадают .env, локальные конфиги "
               "и всё, что намеренно не в git.\n\n"
               "Альтернативы:\n"
-              "  1. git clean -n — сухой прогон, покажет список без удаления\n"
-              "  2. git clean -i — интерактивный режим с выбором\n"
-              "  3. Удали конкретные файлы вручную",
-        "en": "BLOCKED [W/Write]: git clean — deleting untracked files.\n\n"
-              "Why this is blocked: .env, local configuration and everything deliberately "
+              "  1. git clean -n - сухой прогон, покажет список без удаления\n"
+              "  2. git clean -i - интерактивный режим с выбором\n"
+              "  3. Удалить конкретные файлы вручную",
+        "en": "CONFIRM [W/Write]: git clean - deleting untracked files.\n\n"
+              "Why it is risky: .env, local configuration and everything deliberately "
               "kept out of git are in the blast radius.\n\n"
               "Alternatives:\n"
-              "  1. git clean -n — dry run, lists the files without deleting\n"
-              "  2. git clean -i — interactive mode, pick what goes\n"
+              "  1. git clean -n - dry run, lists the files without deleting\n"
+              "  2. git clean -i - interactive mode, pick what goes\n"
               "  3. Delete the specific files by hand",
     },
     "git.checkout_all": {
-        "ru": "BLOCKED [W/Write]: git {subcommand} по всей рабочей копии — откат всех изменений.\n\n"
-              "Причина блокировки: правки во всех файлах пропадают разом, включая те, "
+        "ru": "CONFIRM [W/Write]: git {subcommand} по всей рабочей копии - откат всех изменений.\n\n"
+              "Чем опасно: правки во всех файлах пропадают разом, включая те, "
               "которых задача не касалась.\n\n"
               "Альтернативы:\n"
               "  1. git {subcommand} -- <конкретный-файл>\n"
-              "  2. git stash — сохранить, а потом решить\n"
-              "  3. git diff — сначала посмотри, что именно потеряется",
-        "en": "BLOCKED [W/Write]: git {subcommand} across the whole working copy — reverting "
+              "  2. git stash - сохранить, а потом решить\n"
+              "  3. git diff - сначала посмотреть, что именно потеряется",
+        "en": "CONFIRM [W/Write]: git {subcommand} across the whole working copy - reverting "
               "every change.\n\n"
-              "Why this is blocked: edits in every file go at once, including files the task "
+              "Why it is risky: edits in every file go at once, including files the task "
               "never touched.\n\n"
               "Alternatives:\n"
               "  1. git {subcommand} -- <specific-file>\n"
-              "  2. git stash — keep them, decide later\n"
-              "  3. git diff — look at what would be lost first",
+              "  2. git stash - keep them, decide later\n"
+              "  3. git diff - look at what would be lost first",
     },
 
     # -- правило sql ---------------------------------------------------------
@@ -332,20 +352,19 @@ MESSAGES = {
               "  3. If the bulk update is genuinely needed — dump the table beforehand",
     },
     "sql.drop_truncate": {
-        "ru": "BLOCKED [P/Privileged]: DROP или TRUNCATE — удаление структуры или всех данных.\n\n"
-              "Причина блокировки: операция необратима и не журналируется как обычные изменения.\n\n"
+        "ru": "CONFIRM [P/Privileged]: DROP или TRUNCATE - удаление структуры или всех данных.\n\n"
+              "Чем опасно: операция необратима и не журналируется как обычные изменения.\n\n"
               "Альтернативы:\n"
-              "  1. Сделай дамп затронутых таблиц и подтверди операцию вручную\n"
-              "  2. На боевой БД — только со свежим бэкапом и подтверждением владельца\n"
-              "  3. Если это миграция — оформи её файлом миграции, а не разовой командой",
-        "en": "BLOCKED [P/Privileged]: DROP or TRUNCATE — removing structure or all data.\n\n"
-              "Why this is blocked: the operation is irreversible and is not journalled the "
+              "  1. Сначала сделать дамп затронутых таблиц\n"
+              "  2. На боевой БД - только со свежим бэкапом\n"
+              "  3. Если это миграция - оформить её файлом миграции, а не разовой командой",
+        "en": "CONFIRM [P/Privileged]: DROP or TRUNCATE - removing structure or all data.\n\n"
+              "Why it is risky: the operation is irreversible and is not journalled the "
               "way ordinary changes are.\n\n"
               "Alternatives:\n"
-              "  1. Dump the affected tables and confirm the operation by hand\n"
-              "  2. On a production database — only with a fresh backup and the owner's "
-              "confirmation\n"
-              "  3. If this is a migration — write it as a migration file, not a one-off "
+              "  1. Dump the affected tables first\n"
+              "  2. On a production database - only with a fresh backup\n"
+              "  3. If this is a migration - write it as a migration file, not a one-off "
               "command",
     },
 
@@ -630,5 +649,66 @@ MESSAGES = {
               "ready line `printf 'ru\\n' > .claude/.abt-lang` and stop there.\n\n"
               "Ask once and do not push: if the user says nothing, English stays, and the "
               "question can be revisited at any time.",
+    },
+
+    # -- что делать после отказа: denial_guidance.py -------------------------
+    # Текст отказа классификатора auto mode велит модели «STOP and explain to
+    # the user», и агент послушно заканчивает словами «выполните сами». По
+    # транскриптам: если вместо этого спросить через AskUserQuestion и получить
+    # «да», повтор проходит. Правило превращает эту находку в поведение.
+    # Маркер блока из denial.subagent обязан дословно встречаться в denial.main -
+    # по нему главный диалог узнаёт просьбу роли. Проверяется тестом.
+    "denial.main": {
+        "ru": "Если классификатор auto mode Claude Code отклонил нужное действие (в результате "
+              "написано «denied by the Claude Code auto mode classifier»), не заканчивай "
+              "словами «выполните сами» и не ищи обход. Спроси пользователя через "
+              "AskUserQuestion: какое именно действие, зачем оно нужно и что может пойти не так, "
+              "с вариантами «Разрешить», «Сделать иначе» и «Сделаю сам». Если пользователь "
+              "разрешил, повтори то же действие один раз. Если отказ повторился, остановись и "
+              "подскажи, что действие можно одобрить вручную: /permissions, вкладка Recently "
+              "denied, клавиша r.\n\n"
+              "Отказ защитного хука agents-best-teams (текст начинается с BLOCKED) согласием "
+              "не снимается: не спрашивай разрешения на повтор, а назови, что заблокировано, "
+              "и предложи альтернативы из текста блокировки.\n\n"
+              "Субагент спросить пользователя не может. Если субагент закончил отчёт блоком "
+              "НУЖНО РАЗРЕШЕНИЕ, спроси пользователя так же и, если разрешено, выполни это "
+              "действие сам в этом диалоге.",
+        "en": "If the Claude Code auto mode classifier denies an action you need (the result "
+              "says \"denied by the Claude Code auto mode classifier\"), do not end with \"run "
+              "it yourself\" and do not look for a workaround. Ask the user with "
+              "AskUserQuestion instead: the exact action, why it is needed and what could go "
+              "wrong, with the options \"Allow\", \"Do it another way\" and \"I will do it "
+              "myself\". If the user allows it, retry the same action once. If it is denied "
+              "again, stop and tell the user they can approve it by hand: /permissions, the "
+              "Recently denied tab, key r.\n\n"
+              "A block from the agents-best-teams protective hook (its text starts with "
+              "BLOCKED) is not lifted by approval: do not ask permission to retry it; say what "
+              "was blocked and offer the alternatives from the block text.\n\n"
+              "A subagent cannot ask the user. When a subagent ends its report with a "
+              "PERMISSION NEEDED block, ask the user the same way and, if allowed, run that "
+              "action yourself in this conversation.",
+    },
+    "denial.subagent": {
+        "ru": "Спросить пользователя ты не можешь: у субагентов нет AskUserQuestion. Если "
+              "нужное действие отклонено (классификатором auto mode или защитным хуком), не "
+              "пиши «выполните сами» и не ищи обход. Доделай всё, что от этого действия не "
+              "зависит, и закончи отчёт блоком:\n\n"
+              "НУЖНО РАЗРЕШЕНИЕ\n"
+              "- действие: <точная команда или правка>\n"
+              "- зачем: <для чего оно нужно>\n"
+              "- риск: <что может пойти не так>\n\n"
+              "Спросит пользователя главный диалог. Если такой блок вернул запущенный тобой "
+              "субагент, перенеси его в свой отчёт без изменений.",
+        "en": "You cannot ask the user anything: AskUserQuestion is not available to "
+              "subagents. If an action you need is denied (by the auto mode classifier or by "
+              "a protective hook), do not write \"run it yourself\" and do not work around it. "
+              "Finish everything that does not depend on that action, then end your report "
+              "with this block:\n\n"
+              "PERMISSION NEEDED\n"
+              "- action: <the exact command or change>\n"
+              "- why: <what it is needed for>\n"
+              "- risk: <what could go wrong>\n\n"
+              "The main conversation will ask the user. If a subagent you started returned "
+              "such a block, carry it into your own report unchanged.",
     },
 }

@@ -7,7 +7,8 @@ guard.py — защитные PreToolUse-хуки для команды аген
 Обоснование — principles/09-mechanical-invariants.md, классы риска — principles/03.
 
 Вход:  JSON хука на stdin.
-Выход: пусто = разрешить; JSON с permissionDecision=deny = заблокировать.
+Выход: пусто = разрешить; JSON с permissionDecision=deny = заблокировать;
+       JSON с permissionDecision=ask = спросить человека в окне Claude Code.
        Код возврата всегда 0 — решение передаётся через JSON, а не через exit 2.
 
 Зависимости: только стандартная библиотека Python 3.8+.
@@ -173,6 +174,45 @@ def deny(reason, ask=True):
     # ensure_ascii=True: кириллица уезжает в \uXXXX и не зависит от кодировки консоли.
     sys.stdout.write(json.dumps(payload, ensure_ascii=True))
     sys.exit(0)
+
+
+# Просьбы подтвердить, собранные за одну проверку. Отказ завершает работу сразу,
+# а подтверждение откладывается до конца разбора: иначе в `git push --force &&
+# rm -rf /` первое правило открыло бы окно, и после «да» вторая команда
+# выполнилась бы непроверенной. Так отказ всегда сильнее подтверждения.
+PENDING_CONFIRMATIONS = []
+
+
+def confirm(reason):
+    """
+    Просит человека подтвердить вызов в окне Claude Code вместо отказа.
+
+    Для операций, у которых есть законные случаи: force-push, сброс рабочей
+    копии, DROP. Отказ ничем не снимается, и агенту, упёршись, оставалось
+    только сказать «выполните сами». Окно ставит решение туда, где оно и должно
+    быть, причём и в auto mode: классификатор не может одобрить такой вызов
+    молча, а агент не может подделать нажатие.
+    """
+    PENDING_CONFIRMATIONS.append(reason)
+
+
+def emit_confirmation():
+    """Открывает одно окно на все накопленные просьбы, если отказа не случилось."""
+    if not PENDING_CONFIRMATIONS:
+        return
+    # Одно и то же правило в нескольких сегментах команды - один текст, а не повтор.
+    text = "\n\n".join(dict.fromkeys(PENDING_CONFIRMATIONS))
+    payload = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            # Этот текст Claude Code показывает только человеку в окне.
+            "permissionDecisionReason": text,
+            # А этот - только агенту, рядом с результатом вызова.
+            "additionalContext": msg("guard.confirm_context", details=text),
+        }
+    }
+    sys.stdout.write(json.dumps(payload, ensure_ascii=True))
 
 
 HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
@@ -535,11 +575,11 @@ def check_git(tokens):
 
     if subcommand == "push":
         if any(a == "--mirror" for a in args):
-            deny(msg("git.push_mirror"))
+            confirm(msg("git.push_mirror"))
 
         # Удаление ветки на сервере: --delete или рефспек, начинающийся с двоеточия.
         if any(a in ("--delete", "-d") for a in args) or any(a.startswith(":") for a in args):
-            deny(msg("git.push_delete"))
+            confirm(msg("git.push_delete"))
 
         forced = any(a == "--force" or (a.startswith("-") and not a.startswith("--") and "f" in a) for a in args)
         # Рефспек, начинающийся с плюса, — тот же force, только другим синтаксисом.
@@ -547,10 +587,10 @@ def check_git(tokens):
         if (forced or plus_refspec) and not any(a.startswith("--force-with-lease") for a in args):
             syntax = msg("git.syntax_plus_refspec") if plus_refspec and not forced \
                 else msg("git.syntax_force")
-            deny(msg("git.push_force", syntax=syntax))
+            confirm(msg("git.push_force", syntax=syntax))
 
     if subcommand == "reset" and "--hard" in args:
-        deny(msg("git.reset_hard"))
+        confirm(msg("git.reset_hard"))
 
     if subcommand == "clean":
         # -n и --dry-run ничего не удаляют, а показывают список — это безопасно
@@ -567,7 +607,7 @@ def check_git(tokens):
         # Проверяем не набор букв, а сам факт вызова: без -f git clean и так
         # откажется работать, поэтому любой недry-run вызов — намерение удалять.
         if not safe:
-            deny(msg("git.clean"))
+            confirm(msg("git.clean"))
 
     # git restore делает то же, что checkout --, и в справке git предлагается
     # как современная замена, поэтому правило обязано покрывать обе формы.
@@ -576,7 +616,7 @@ def check_git(tokens):
         # any, а не all: `git checkout -- . README` откатывает всё точно так же,
         # а наличие второго пути раньше снимало блокировку.
         if any(t in (".", "./", "*", "./*", ":/") for t in tail):
-            deny(msg("git.checkout_all", subcommand=subcommand))
+            confirm(msg("git.checkout_all", subcommand=subcommand))
 
 
 # ---------------------------------------------------------------------------
@@ -646,7 +686,7 @@ def _check_sql_statement(flat):
         r"|truncate\b)",
         flat, re.I,
     ):
-        deny(msg("sql.drop_truncate"))
+        confirm(msg("sql.drop_truncate"))
 
 
 # ---------------------------------------------------------------------------
@@ -822,12 +862,14 @@ def main():
 
     if tool_name == "Bash":
         analyze_bash(tool_input.get("command") or "", enabled, agent)
+        emit_confirmation()
         return
 
     file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     for name, rule in PATH_RULES.items():
         if name in enabled:
             rule(tool_name, file_path, agent)
+    emit_confirmation()
 
 
 if __name__ == "__main__":
