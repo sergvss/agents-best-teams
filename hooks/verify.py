@@ -33,6 +33,8 @@ import time
 
 # Тексты для человека — в каталоге сообщений, см. messages.py.
 from messages import msg, use_project
+# Команда тестов может жить в файле пользователя: читает его guard.py.
+from guard import read_verify_command
 
 DEFAULT_MAX_BLOCKS = 2
 DEFAULT_TIMEOUT_S = 300
@@ -112,14 +114,25 @@ def main():
         except ValueError:
             pass
 
-    # Ошибка конфигурации не должна запирать сессию: для Stop-хука блокировка
-    # дороже пропуска, поэтому здесь fail-open, в отличие от guard.py.
-    if not args.command:
-        sys.stderr.write(msg("verify.no_command"))
-        return 1
-
     cwd = data.get("cwd") or os.getcwd()
     use_project(cwd)
+
+    # Команда - из --command или из файла команд пользователя
+    # (~/.claude/agents-best-teams/verify.json). Плагин подключает хук всегда,
+    # поэтому без команды он молчит: проект без тестов не должен получать ни
+    # ошибок, ни задержки на каждом Stop.
+    command = args.command
+    if not command:
+        # Команда из файла запускается в корне проекта - там же, по чему она
+        # найдена. Иначе команда одного каталога могла бы уйти в другой.
+        root = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
+        try:
+            command = read_verify_command(root)
+        except Exception:  # noqa: BLE001 - для Stop-хука блокировка дороже пропуска
+            command = ""
+        cwd = root
+    if not command:
+        return 0
     session_id = str(data.get("session_id") or "no-session")
 
     # Пропуск при чистом дереве — опция, а не поведение по умолчанию.
@@ -133,7 +146,7 @@ def main():
 
     try:
         result = subprocess.run(
-            args.command, cwd=cwd, shell=True,
+            command, cwd=cwd, shell=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=args.timeout,
         )
         output = result.stdout.decode("utf-8", "replace").strip()
@@ -164,7 +177,7 @@ def main():
         sys.stderr.write(msg("verify.giving_up", blocks=blocks - 1, tail=tail))
         return 0
 
-    sys.stderr.write(msg("verify.not_done", command=args.command, tail=tail))
+    sys.stderr.write(msg("verify.not_done", command=command, tail=tail))
     return 2
 
 

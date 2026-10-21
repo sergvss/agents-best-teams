@@ -165,7 +165,7 @@ class TestCountsMatchReality(unittest.TestCase):
         # Число вхождений `python` в конфигурации названо словом в трёх местах:
         # человек на macOS и Linux меняет их все, и устаревшее число оставит
         # часть хуков молчать. Каждый новый хук это число меняет.
-        words = {12: ("twelve", "двенадцать"), 15: ("fifteen", "пятнадцать"),
+        words = {12: ("twelve", "двенадцать"), 15: ("fifteen", "пятнадцать"), 16: ("sixteen", "шестнадцать"),
                  18: ("eighteen", "восемнадцать")}
         counts = {read(os.path.join(REPO, "hooks", name)).count('"command": "python"')
                   for name in ("hooks.json", "settings.example.json")}

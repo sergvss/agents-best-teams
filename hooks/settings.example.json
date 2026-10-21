@@ -197,6 +197,20 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/verify.py"
+            ],
+            "timeout": 330
+          }
+        ]
+      }
     ]
   }
 }

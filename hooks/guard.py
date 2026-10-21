@@ -327,6 +327,72 @@ def apply_project_config(additions):
     QA_TESTER_FILE_PATTERNS = QA_TESTER_FILE_PATTERNS + tuple(additions["qa_tester_file_patterns"])
 
 
+# Команды тестов для Stop-хука verify.py: {"<корень проекта>": "<команда>"}.
+# Файл пользователя, а не проекта, намеренно: команда выполняется на каждом
+# завершении работы агента, и чужой склонированный репозиторий не должен
+# подложить её своим файлом. Внешнее ревью 1.20.2 нашло это до выпуска.
+VERIFY_STORE = ("agents-best-teams", "verify.json")
+
+
+def verify_store_path():
+    return os.path.join(os.path.expanduser("~"), ".claude", *VERIFY_STORE)
+
+
+def project_key(directory):
+    """
+    Ключ проекта в файле команд: настоящий путь, прямые слеши, нижний регистр.
+
+    Нижний регистр на всех ОС, а не normcase: на macOS normcase регистр не
+    меняет, и путь, написанный человеком иначе, молча выключил бы проверку.
+    """
+    return os.path.realpath(directory).replace("\\", "/").lower()
+
+
+def read_verify_command(directory):
+    """Команда тестов этого проекта из файла пользователя или пустая строка."""
+    try:
+        with open(verify_store_path(), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    # Ключи тоже нормализуются: человек напишет путь с обратными слешами или
+    # в другом регистре, и точное сравнение молча выключило бы проверку.
+    wanted = project_key(directory)
+    for key, command in data.items():
+        if isinstance(key, str) and project_key(key) == wanted and isinstance(command, str):
+            return command.strip()
+    return ""
+
+
+# Рабочий каталог вызова: нужен, чтобы сверить относительный путь записи с
+# файлом команд через файловую систему. Задаётся в main().
+BASE_DIR = ""
+
+
+def is_verify_store(target, workdir=None):
+    """
+    True, если запись попадёт в файл команд verify.py.
+
+    Два признака. По имени - два последних сегмента пути. И по файловой
+    системе - os.path.samefile: симлинк или жёсткая ссылка в репозитории на
+    этот файл иначе прошли бы как обычная запись, и подложенная команда
+    выполнилась бы на следующем завершении (внешнее ревью 1.20.2).
+    """
+    raw = target.strip("\"'").replace("\\", "/")
+    if workdir and not is_absolute(raw):
+        raw = posixpath.join(workdir.replace("\\", "/"), raw)
+    parts = [part.lower() for part in posixpath.normpath(raw).split("/") if part]
+    if tuple(parts[-2:]) == VERIFY_STORE:
+        return True
+    try:
+        full = raw if is_absolute(raw) else os.path.join(BASE_DIR or os.getcwd(), raw)
+        return os.path.samefile(os.path.expanduser(full), verify_store_path())
+    except (OSError, ValueError):
+        return False
+
+
 def is_project_config(target, workdir=None):
     """
     True, если путь - файл настроек защиты.
@@ -1145,6 +1211,8 @@ def analyze_bash(command, enabled, agent="", depth=0):
             note_platform_write(target, workdir)
             if is_project_config(target, workdir):
                 confirm(msg("config.protected_write", path=target))
+            if is_verify_store(target, workdir):
+                confirm(msg("verify.store_write", path=target))
 
 
 def main():
@@ -1191,6 +1259,8 @@ def main():
     except Exception:  # noqa: BLE001 - любая ошибка файла означает умолчания
         pass
 
+    global BASE_DIR
+    BASE_DIR = data.get("cwd") or os.getcwd()
     tool_name = data.get("tool_name") or ""
     tool_input = data.get("tool_input") or {}
     agent = data.get("agent_type") or ""
@@ -1209,6 +1279,8 @@ def main():
         note_platform_write(file_path)
         if is_project_config(file_path):
             confirm(msg("config.protected_write", path=file_path))
+        if is_verify_store(file_path):
+            confirm(msg("verify.store_write", path=file_path))
     emit_confirmation(mode)
 
 

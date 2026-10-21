@@ -549,12 +549,6 @@ MESSAGES = {
         "ru": "verify.py: ошибка в аргументах хука, проверка не выполнена.\n",
         "en": "verify.py: bad hook arguments, the check did not run.\n",
     },
-    "verify.no_command": {
-        "ru": "verify.py: не задан --command, проверять нечего. "
-              "Укажи команду тестов в конфигурации хука или убери хук.\n",
-        "en": "verify.py: no --command given, there is nothing to check. "
-              "Name your test command in the hook configuration, or remove the hook.\n",
-    },
     "verify.timeout": {
         "ru": "Проверка не уложилась в {timeout} с и была прервана.",
         "en": "The check did not finish within {timeout}s and was interrupted.",
@@ -776,17 +770,30 @@ MESSAGES = {
         "ru": "В проекте есть тесты, а Stop-хук `verify.py` не включён: агент может "
               "закончить работу с падающими тестами, и никто этого не остановит.\n\n"
               "Предложи пользователю включить его одной короткой фразой в конце своего первого "
-              "ответа, не прерывая текущую задачу. Включение - блок `Stop` с командой тестов "
-              "проекта, см. раздел «Stop-хук» в `hooks/README.md` плагина agents-best-teams. "
-              "Если пользователь откажется - не возвращайся к теме в этой сессии. Отключить "
-              "напоминание насовсем: создать пустой файл `{opt_out}`.",
+              "ответа, не прерывая текущую задачу. Включение - запись с командой тестов в файле "
+              "пользователя `{store}`, например `{{\"{project}\": \"npm test\"}}`. Файл лежит "
+              "вне репозитория намеренно: команда выполняется на каждом завершении, и чужой "
+              "репозиторий не должен её подложить. Запись в него Claude Code покажет окном "
+              "подтверждения - это ожидаемо. Если пользователь откажется - не возвращайся к теме "
+              "в этой сессии. Отключить напоминание насовсем: создать пустой файл `{opt_out}`.",
         "en": "The project has tests, but the `verify.py` Stop hook is not enabled: an agent "
               "can finish its work with failing tests and nothing will stop it.\n\n"
               "Suggest enabling it to the user in one short sentence at the end of your first "
-              "reply, without interrupting the current task. Enabling it means a `Stop` block "
-              "with the project's test command, see the \"Stop hook\" section of `hooks/README.md` "
-              "in the agents-best-teams plugin. If the user declines, do not raise it again this "
-              "session. To silence the reminder for good: create an empty `{opt_out}` file.",
+              "reply, without interrupting the current task. Enabling it means an entry with the "
+              "test command in the user file `{store}`, for example "
+              "`{{\"{project}\": \"npm test\"}}`. The file lives outside the repository on "
+              "purpose: the command runs on every stop, and a foreign repository must not be able "
+              "to plant it. Claude Code shows a permission prompt for writes to it - that is "
+              "expected. If the user declines, do not raise it again this session. To silence the "
+              "reminder for good: create an empty `{opt_out}` file.",
+    },
+    "verify.store_write": {
+        "ru": "CONFIRM [P/Privileged]: запись в {path} - файл команд Stop-хука verify.py.\n\n"
+              "Команда из этого файла выполняется оболочкой на каждом завершении работы агента. "
+              "Проверь, что там именно команда тестов проекта и ничего больше.",
+        "en": "CONFIRM [P/Privileged]: writing to {path} - the verify.py Stop hook command file."
+              "\n\nA command from this file runs in a shell every time the agent finishes. Check "
+              "that it is the project's test command and nothing else.",
     },
     "guard.confirm_bypass_platform_write": {
         "ru": "BLOCKED [P/Privileged]: действие требует подтверждения человека, но окно в "

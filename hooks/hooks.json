@@ -197,6 +197,20 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/verify.py"
+            ],
+            "timeout": 330
+          }
+        ]
+      }
     ]
   }
 }

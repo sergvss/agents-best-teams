@@ -1311,6 +1311,63 @@ class TestConfirmationInsteadOfDenial(GuardTestCase):
         _, reason, _ = decide(bash("git reset --hard && git reset --hard"))
         self.assertEqual(reason.count("CONFIRM ["), 1, reason)
 
+    def test_verify_command_file_write_needs_a_human(self):
+        # Команда из этого файла выполняется оболочкой на каждом завершении:
+        # подменить её без человека агент не должен.
+        store = "C:/Users/someone/.claude/agents-best-teams/verify.json"
+        for payload in (edit(store, "Write"), bash("echo '{}' > " + store),
+                        bash("cd C:/Users/someone/.claude/agents-best-teams && tee verify.json")):
+            with self.subTest(payload=payload["tool_input"]):
+                decision, reason, _ = decide(payload)
+                self.assertEqual(decision, "ask")
+                self.assertIn("verify.py", reason)
+        # В bypassPermissions это запись в .claude/ - окно отменила бы платформа.
+        payload = edit(store, "Write")
+        payload["permission_mode"] = "bypassPermissions"
+        self.assertEqual(decide(payload)[0], "deny")
+
+    def test_link_to_the_verify_command_file_is_recognised(self):
+        # Внешнее ревью 1.20.2: ссылка в репозитории на файл команд прошла бы
+        # проверку по имени, и подложенная команда выполнилась бы на Stop.
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            store_dir = os.path.join(home, ".claude", "agents-best-teams")
+            os.makedirs(store_dir)
+            store = os.path.join(store_dir, "verify.json")
+            with open(store, "w", encoding="utf-8") as fh:
+                fh.write("{}")
+            repo = os.path.join(tmp, "repo")
+            os.makedirs(repo)
+            links = [os.path.join(repo, "hard.json")]
+            os.link(store, links[0])
+            try:
+                os.symlink(store, os.path.join(repo, "soft.json"))
+                links.append(os.path.join(repo, "soft.json"))
+            except (OSError, NotImplementedError):
+                pass  # на Windows без прав симлинк не создать; жёсткой ссылки хватит
+            saved = {key: os.environ.get(key) for key in ("HOME", "USERPROFILE")}
+            os.environ["HOME"] = os.environ["USERPROFILE"] = home
+            try:
+                for link in links:
+                    name = os.path.basename(link)
+                    for payload in (edit(link, "Write"), bash("echo x > " + name)):
+                        payload["cwd"] = repo
+                        with self.subTest(link=name, tool=payload["tool_name"]):
+                            self.assertEqual(decide(payload)[0], "ask")
+                # Обычный файл рядом - не файл команд.
+                plain = bash("echo x > plain.json")
+                plain["cwd"] = repo
+                self.assertIsNone(decide(plain)[0])
+            finally:
+                for key, value in saved.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+
+    def test_reading_the_verify_command_file_is_allowed(self):
+        self.assertIsNone(run_hook(bash("cat ~/.claude/agents-best-teams/verify.json")))
+
     def test_git_global_options_do_not_hide_the_subcommand(self):
         # Внешнее ревью 1.20.0: в `git --work-tree . push --force` точка читалась
         # подкомандой, и force-push проходил мимо правила.

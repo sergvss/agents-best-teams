@@ -30,7 +30,8 @@ import sys
 # Тексты для человека — в каталоге сообщений, см. messages.py.
 from messages import LANG_FILE, SUPPORTED, msg, use_project
 # Файл настроек разбирает сам guard.py: правило одно, и разбор тоже один.
-from guard import PROJECT_CONFIG, QA_TESTER_FILE_PATTERNS, read_project_config
+from guard import (PROJECT_CONFIG, QA_TESTER_FILE_PATTERNS, project_key,
+                   read_project_config, read_verify_command, verify_store_path)
 
 # Файл-маркер: пользователь решил, что подсказка не нужна.
 OPT_OUT = os.path.join(".claude", ".no-team-setup-prompt")
@@ -137,7 +138,11 @@ def has_tests(cwd):
                 inner = os.listdir(path)
             except OSError:
                 continue
-            if any(is_test_file(name) for name in inner):
+            # Тестовый файл или тестовый каталог: client/tests/, server/tests/ -
+            # раскладка песочницы, которую первая версия проверки не видела.
+            if any(is_test_file(name) or (name.lower() in TEST_DIRS
+                                          and os.path.isdir(os.path.join(path, name)))
+                   for name in inner):
                 return True
         elif is_test_file(entry):
             return True
@@ -149,7 +154,15 @@ def is_test_file(name):
 
 
 def verify_is_configured(cwd):
-    """True, если Stop-хук verify.py упомянут в настройках проекта или пользователя."""
+    """
+    True, если у Stop-хука verify.py есть команда: запись в файле команд
+    пользователя или упоминание verify.py в настройках Claude Code.
+    """
+    try:
+        if read_verify_command(os.environ.get("CLAUDE_PROJECT_DIR") or cwd):
+            return True
+    except Exception:  # noqa: BLE001 - напоминание не должно ломать старт сессии
+        pass
     candidates = [
         os.path.join(cwd, ".claude", "settings.json"),
         os.path.join(cwd, ".claude", "settings.local.json"),
@@ -205,7 +218,9 @@ def main():
     # вспоминает (задача #6). Свой опт-аут, не общий с предложением команды.
     if (not os.path.exists(os.path.join(cwd, VERIFY_OPT_OUT))
             and has_tests(cwd) and not verify_is_configured(cwd)):
-        parts.append(msg("session.verify_reminder", opt_out=VERIFY_OPT_OUT.replace("\\", "/")))
+        parts.append(msg("session.verify_reminder", opt_out=VERIFY_OPT_OUT.replace("\\", "/"),
+                         store=verify_store_path().replace("\\", "/"),
+                         project=project_key(os.environ.get("CLAUDE_PROJECT_DIR") or cwd)))
 
     if os.path.exists(os.path.join(cwd, OPT_OUT)):
         return emit(parts)

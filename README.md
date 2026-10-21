@@ -85,12 +85,12 @@ Not everything starts working the moment you install. The precise picture:
 | **Checklists as skills** | immediately | Claude pulls them in when relevant, or invoke them with `/` |
 | **Team setup prompt** | next start | It is a `SessionStart` hook: the event already fired if you installed mid-session. `/clear` is enough — no need to restart entirely — but `/reload-plugins` will not do it |
 | **Team roles** | manual only | `setup-agent-team`, see below |
-| **`verify.py` Stop hook** | manual only | Not shipped enabled: without a test command there is nothing for it to run. Wiring — [hooks/README.md](hooks/README.md) |
+| **`verify.py` Stop hook** | one line of config | Wired by the plugin but silent until you name your test command in your user file `~/.claude/agents-best-teams/verify.json`: `{"C:/projects/my-app": "npm test"}`. Outside the repository on purpose, so a cloned repo cannot plant a command. Wiring — [hooks/README.md](hooks/README.md) |
 | **Triangulation** | manual only | Needs `agents.config` and external model keys — [docs/models.md](docs/models.md) |
 
 **Activation comes first.** After installing, Claude Code prints either `Plugin is now active.` or `Run /reload-plugins to activate.` In the second case nothing works until you run that command.
 
-**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are fifteen of them per configuration file, and fixing one block leaves the log, the retry counter, the review gate and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
+**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are sixteen of them per configuration file, and fixing one block leaves the log, the retry counter, the review gate and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
 
 ### The roles need a separate step
 

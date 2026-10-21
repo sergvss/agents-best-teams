@@ -10,6 +10,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,16 +26,23 @@ PASSING = "{} -c \"import sys; sys.exit(0)\"".format(sys.executable)
 FAILING = "{} -c \"print('2 tests failed'); import sys; sys.exit(1)\"".format(sys.executable)
 
 
-def run_verify(session, command=None, cwd=REPO, extra=None):
+def run_verify(session, command=None, cwd=REPO, extra=None, home=None):
     """Возвращает (код возврата, stderr)."""
     argv = [sys.executable, "-X", "utf8", VERIFY]
     if command is not None:
         argv += ["--command", command]
     argv += extra or []
     payload = {"hook_event_name": "Stop", "session_id": session, "cwd": cwd}
+    # Внутри сессии Claude Code его CLAUDE_PROJECT_DIR указал бы хуку на этот
+    # репозиторий, и команда читалась бы не из временного проекта.
+    env = dict(os.environ)
+    env.pop("CLAUDE_PROJECT_DIR", None)
+    if home:
+        # Файл команд ищется в домашнем каталоге: подменяем его временным.
+        env["HOME"] = env["USERPROFILE"] = home
     proc = subprocess.run(
         argv, input=json.dumps(payload).encode("utf-8"),
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
     )
     return proc.returncode, proc.stderr.decode("utf-8", "replace")
 
@@ -61,12 +69,82 @@ class TestVerifyGate(unittest.TestCase):
         self._sessions.append(unique)
         return unique
 
-    def test_missing_command_does_not_lock_the_session(self):
-        # Для Stop-хука блокировка дороже пропуска: ошибка конфигурации
-        # обязана быть заметной, но не запирать сессию.
-        code, err = run_verify(self.session("cfg"), command=None)
-        self.assertEqual(code, 1)
-        self.assertIn("--command", err)
+    def project(self, command=None, raw=None):
+        """
+        Временный проект и временный домашний каталог с файлом команд verify.py.
+
+        Команда живёт в файле пользователя, а не проекта: чужой репозиторий
+        не должен подложить её своим файлом (внешнее ревью 1.20.2).
+        """
+        tmp = tempfile.mkdtemp(prefix="abt-verify-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        project = os.path.join(tmp, "project")
+        home = os.path.join(tmp, "home")
+        os.makedirs(project)
+        os.makedirs(os.path.join(home, ".claude", "agents-best-teams"))
+        if command is not None or raw is not None:
+            content = raw if raw is not None else json.dumps({project: command})
+            with open(os.path.join(home, ".claude", "agents-best-teams", "verify.json"), "w",
+                      encoding="utf-8") as fh:
+                fh.write(content)
+        self.home = home
+        return project
+
+    def run_in(self, session, project, command=None):
+        return run_verify(session, command, cwd=project, home=self.home)
+
+    def test_no_command_anywhere_is_silent(self):
+        # Плагин подключает хук всегда. Проект без команды тестов не должен
+        # получать ни ошибки, ни блокировки на каждом Stop.
+        project = self.project()
+        code, err = self.run_in(self.session("cfg"), project)
+        self.assertEqual(code, 0)
+        self.assertEqual(err.strip(), "")
+
+    def test_command_from_the_user_file_blocks_on_failure(self):
+        project = self.project(FAILING)
+        code, err = self.run_in(self.session("file-fail"), project)
+        self.assertEqual(code, 2, err)
+        self.assertIn("2 tests failed", err)
+
+    def test_command_from_the_user_file_allows_on_success(self):
+        project = self.project(PASSING)
+        self.assertEqual(self.run_in(self.session("file-pass"), project)[0], 0)
+
+    def test_path_spelling_does_not_matter(self):
+        # Человек напишет путь с обратными слешами или в другом регистре.
+        tmp = self.project()
+        variant = tmp.replace("/", "\\") if os.sep == "\\" else tmp + "/"
+        with open(os.path.join(self.home, ".claude", "agents-best-teams", "verify.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({variant.upper() if os.sep == "\\" else variant: FAILING}, fh)
+        self.assertEqual(self.run_in(self.session("spelling"), tmp)[0], 2)
+
+    def test_command_in_the_repository_file_is_ignored(self):
+        # Ключ в файле проекта не читается: его мог принести чужой репозиторий.
+        project = self.project()
+        os.makedirs(os.path.join(project, ".claude"))
+        with open(os.path.join(project, ".claude", "agents-best-teams.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"verify_command": FAILING}, fh)
+        self.assertEqual(self.run_in(self.session("repo-file"), project)[0], 0)
+
+    def test_other_projects_command_does_not_apply(self):
+        project = self.project()
+        with open(os.path.join(self.home, ".claude", "agents-best-teams", "verify.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({os.path.join(os.path.dirname(project), "other"): FAILING}, fh)
+        self.assertEqual(self.run_in(self.session("other"), project)[0], 0)
+
+    def test_argument_wins_over_the_user_file(self):
+        project = self.project(FAILING)
+        self.assertEqual(self.run_in(self.session("arg-wins"), project, PASSING)[0], 0)
+
+    def test_broken_user_file_does_not_lock_the_session(self):
+        for raw in ("{not json", "[1, 2]", '{"x": 42}'):
+            with self.subTest(raw=raw):
+                project = self.project(raw=raw)
+                self.assertEqual(self.run_in(self.session("broken"), project)[0], 0)
 
     def test_passing_check_allows_stop(self):
         code, err = run_verify(self.session("pass-1"), PASSING)
