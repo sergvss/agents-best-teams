@@ -56,8 +56,8 @@ import time
 from messages import msg, use_project
 # Разбор команды общий с guard.py: cd, sh -c и обёртки понимаются одинаково.
 from guard import (
-    GIT_GLOBAL_WITH_VALUE, MAX_NESTING, SHELL_WRAPPERS, WRITE_TOOLS, basename, confirm, deny,
-    emit_confirmation, expand_assigned, is_absolute, next_workdir, note_platform_write,
+    GIT_GLOBAL_WITH_VALUE, MAX_NESTING, SHELL_WRAPPERS, WRITE_TOOLS, basename, comparable,
+    confirm, deny, emit_confirmation, expand_assigned, is_absolute, next_workdir, note_platform_write,
     path_basename, project_root, remember_assignments, split_segments,
     strip_heredoc_bodies, strip_wrappers, written_paths,
 )
@@ -144,11 +144,26 @@ class Unverifiable(Exception):
 # ---------------------------------------------------------------------------
 # Разбор команды
 # ---------------------------------------------------------------------------
+def native(path):
+    """
+    Путь Git Bash `/c/x` -> `C:/x` на Windows.
+
+    Хук зовёт git без оболочки, и такой git пути `/c/...` не понимает: для
+    `cd /c/проект && git commit` шлюз считал каталог «не репозиторием» и молча
+    пропускал коммит без ревью (найдено разбором окна пользователя, 1.21.2).
+    """
+    if os.name == "nt":
+        match = re.match(r"^/([A-Za-z])(/.*)?$", path.replace("\\", "/"))
+        if match:
+            return match.group(1).upper() + ":" + (match.group(2) or "/")
+    return path
+
+
 def resolve(base, path):
     """Каталог относительно base; None означает сам base."""
     if not path:
-        return base
-    return path if is_absolute(path) else os.path.join(base, path)
+        return native(base)
+    return native(path) if is_absolute(path) else os.path.join(native(base), path)
 
 
 def segments(command, base, depth=0):
@@ -202,6 +217,29 @@ def git_call(tokens, cwd):
     if idx >= len(rest):
         return None
     return rest[idx], rest[idx + 1:], cwd, relocated
+
+
+def writes_inside_repo(targets, cwd, tops):
+    """
+    True, если хоть одна запись может попасть в репозиторий, где идёт коммит.
+
+    Запись вне репозитория содержимое коммита не меняет. Агенты так готовят
+    сообщение коммита: `printf '...' > /tmp/msg && git commit -F /tmp/msg`, и
+    шлюз спрашивал «не могу сверить» на каждом таком коммите (окно пользователя).
+    Путь с переменной или каталог вне git считаются «внутри» - строго.
+    """
+    if cwd not in tops:
+        top = git(cwd, "rev-parse", "--show-toplevel")
+        tops[cwd] = comparable(top.strip()) if top else None
+    top = tops[cwd]
+    for target in targets:
+        raw = target.strip("\"'")
+        if top is None or any(char in raw for char in "$`%~"):
+            return True
+        full = comparable(raw if is_absolute(raw) else os.path.join(cwd, raw))
+        if full == top or full.startswith(top.rstrip("/") + "/"):
+            return True
+    return False
 
 
 def git_alias(repo, name):
@@ -392,7 +430,7 @@ def git(repo, *args, **kwargs):
     """Вывод git или None: не репозиторий, нет git, ошибка, таймаут."""
     try:
         proc = subprocess.run(
-            ["git", "-C", repo] + list(args), input=kwargs.get("stdin"),
+            ["git", "-C", native(repo)] + list(args), input=kwargs.get("stdin"),
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=GIT_TIMEOUT_S,
         )
     except (OSError, subprocess.SubprocessError):
@@ -571,6 +609,7 @@ def pre_bash(data):
     staging = "index"
     specs = []
     commits = []
+    tops = {}
     for tokens, cwd, workdir in segments(command, base):
         if is_marker(tokens) and agent != REVIEWER:
             deny(msg("review.approve_not_reviewer", who=agent or msg("review.who_main")))
@@ -587,7 +626,8 @@ def pre_bash(data):
         if call is None:
             # Запись или неизвестная команда до коммита меняет то, что уйдёт
             # в коммит, уже после проверки: отпечаток считается до запуска.
-            if writes or basename(tokens[0]) not in READ_ONLY_COMMANDS:
+            if basename(tokens[0]) not in READ_ONLY_COMMANDS or \
+                    (writes and (not gated or writes_inside_repo(writes, cwd, tops))):
                 staging = "unknown"
             continue
         subcommand, args, repo, relocated = call

@@ -361,6 +361,50 @@ class CommitGate(GateTestCase):
                 self.assertEqual(decision, "ask")
                 self.assertIn("cannot match", text)
 
+    @unittest.skipUnless(os.name == "nt", "пути Git Bash вида /c/... бывают только на Windows")
+    def test_git_bash_paths_do_not_switch_the_gate_off(self):
+        # Разбор окна пользователя: git без оболочки не понимает /c/..., и
+        # `cd /c/проект && git commit` шлюз считал не репозиторием - молча
+        # пропускал коммит кода без ревью.
+        drive, rest = os.path.splitdrive(os.path.abspath(self.repo))
+        bash_path = "/" + drive[0].lower() + rest.replace("\\", "/")
+        self.write("app.py", "print(2)\n")
+        for command in ("cd {} && git commit -am x".format(bash_path),
+                        "git -C {} commit -am x".format(bash_path)):
+            with self.subTest(command=command):
+                self.assertEqual(self.decide(command)[0], "ask")
+        self.approve()
+        self.assertEqual(self.decide("cd {} && git commit -am x".format(bash_path)), (None, None))
+        # Внешнее ревью 1.21.2: запись в репозиторий путём Git Bash не должна
+        # сойти за «запись вне репозитория».
+        decision, text = self.decide("printf x > {0}/late.py && git add late.py && git commit -m x"
+                                     .format(bash_path))
+        self.assertEqual(decision, "ask")
+        self.assertIn("cannot match", text)
+
+    def test_commit_message_file_outside_the_repo_keeps_the_check(self):
+        # Окно пользователя: `printf '...' > /tmp/msg && git commit -F /tmp/msg`
+        # получал «не могу сверить», хотя запись вне репозитория коммит не меняет.
+        outside = tempfile.mkdtemp(prefix="abt-msg-")
+        self.addCleanup(remove_tree, outside)
+        msg_file = os.path.join(outside, "msg.txt").replace("\\", "/")
+        self.write("app.py", "print(2)\n")
+        self.git("add", "app.py")
+        self.approve()
+        for command in ("printf 'fix\\n\\nbody\\n' > {0} && git commit -F {0}".format(msg_file),
+                        "cat > {0} <<'EOF'\nfix\nEOF\ngit commit -F {0}".format(msg_file)):
+            with self.subTest(command=command.splitlines()[0]):
+                self.assertEqual(self.decide(command), (None, None))
+
+    def test_write_inside_the_repo_before_commit_stays_unverifiable(self):
+        self.write("app.py", "print(2)\n")
+        self.git("add", "app.py")
+        self.approve()
+        for command in ("printf x > notes.py && git add notes.py && git commit -m x",
+                        'printf x > "$OUT/msg" && git commit -m x'):
+            with self.subTest(command=command):
+                self.assertIn("cannot match", self.decide(command)[1] or "")
+
     def test_read_only_commands_before_commit_keep_the_check(self):
         self.write("app.py", "print(2)\n")
         self.approve()
