@@ -30,8 +30,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/review_gate.py"
             ],
-            "timeout": 20,
-            "statusMessage": "Checking the commit against the review gate"
+            "timeout": 20
           }
         ]
       },

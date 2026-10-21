@@ -30,8 +30,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/review_gate.py"
             ],
-            "timeout": 20,
-            "statusMessage": "Checking the commit against the review gate"
+            "timeout": 20
           }
         ]
       },
