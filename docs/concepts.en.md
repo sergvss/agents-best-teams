@@ -62,7 +62,8 @@ Critical changes are reviewed by three models from different vendors at once: PR
 Two properties matter more than the arithmetic:
 
 - **Independence.** Each reviewer finishes before seeing the others. A reviewer who knows what the previous one found looks for confirmation instead of looking.
-- **Quorum.** If a reviewer does not answer, the rule degrades quietly: with one side down "2 of 3" becomes unanimity of the rest; with both down only PRIMARY is left — the very opinion the exercise existed to check. A report must therefore state how many voices actually arrived, and must never render silence the same way it renders "no findings".
+- **Quorum.** If a reviewer does not answer, or its answer is unusable (not parseable, truncated, no valid verdict), the rule degrades quietly: with one side down "2 of 3" becomes unanimity of the rest; with both down only PRIMARY is left — the very opinion the exercise existed to check. A report must therefore state how many voices actually arrived, and must never render silence the same way it renders "no findings".
+- **Secrets.** The diff leaves for third-party providers, so it is scanned for secrets before sending. A commit gate sends nothing; a manual run replaces the value with `[REDACTED]`.
 
 Authority: `principles/05-triangulated-review.md`.
 
