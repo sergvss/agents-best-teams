@@ -223,6 +223,19 @@ class CommitGate(GateTestCase):
             with self.subTest(command=command):
                 self.assertEqual(self.decide(command), (None, None))
 
+    def test_commit_message_from_heredoc(self):
+        # Живой прогон в песочнице: `git commit -F - <<'EOF'` после одобрения
+        # трижды получил окно - ограничитель EOF читался путём коммита.
+        # Вторая форма - та, которой коммитит сам Claude Code.
+        self.write("app.py", "print(2)\n")
+        self.git("add", "app.py")
+        self.approve()
+        for command in ("git commit -q -F - <<'EOF'\nfix\n\nbody\nEOF\ngit log --oneline -1",
+                        "git commit -m \"$(cat <<'EOF'\nfix\n\nCo-Authored-By: x <y@z>\nEOF\n)\"",
+                        "git commit -F - <<-EOF\n\tfix\n\tEOF"):
+            with self.subTest(command=command.splitlines()[0]):
+                self.assertEqual(self.decide(command), (None, None))
+
     def test_bypass_mode_with_git_dir_write_blocks_instead_of_asking(self):
         # Живой прогон: агент дописал .git/info/exclude в той же команде, что и
         # коммит, и в bypassPermissions Claude Code пропустил коммит мимо окна.
