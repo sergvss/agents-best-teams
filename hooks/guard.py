@@ -467,7 +467,7 @@ def note_platform_write(target, workdir=None):
         PLATFORM_DIR_WRITES.append(target)
 
 
-def confirm(reason):
+def confirm(reason, details=None):
     """
     Просит человека подтвердить вызов в окне Claude Code вместо отказа.
 
@@ -477,7 +477,9 @@ def confirm(reason):
     быть, причём и в auto mode: классификатор не может одобрить такой вызов
     молча, а агент не может подделать нажатие.
     """
-    PENDING_CONFIRMATIONS.append(reason)
+    # Человек читает окно на каждом таком вызове, поэтому ему - короткая
+    # причина, а подробности с альтернативами - агенту (details).
+    PENDING_CONFIRMATIONS.append((reason, details or reason))
 
 
 def emit_confirmation(permission_mode=""):
@@ -485,11 +487,12 @@ def emit_confirmation(permission_mode=""):
     if not PENDING_CONFIRMATIONS:
         return
     # Одно и то же правило в нескольких сегментах команды - один текст, а не повтор.
-    text = "\n\n".join(dict.fromkeys(PENDING_CONFIRMATIONS))
+    text = "\n\n".join(dict.fromkeys(reason for reason, _ in PENDING_CONFIRMATIONS))
+    details = "\n\n".join(dict.fromkeys(extra for _, extra in PENDING_CONFIRMATIONS))
     # Окно здесь не сработало бы: Claude Code одобрит запись в свой каталог и
     # вместе с ней всю команду. Отказ - то, чем окно и так стало бы без человека.
     if permission_mode == "bypassPermissions" and PLATFORM_DIR_WRITES:
-        deny(msg("guard.confirm_bypass_platform_write", details=text,
+        deny(msg("guard.confirm_bypass_platform_write", details=details,
                  paths=", ".join(dict.fromkeys(PLATFORM_DIR_WRITES))))
     payload = {
         "hookSpecificOutput": {
@@ -498,7 +501,7 @@ def emit_confirmation(permission_mode=""):
             # Этот текст Claude Code показывает только человеку в окне.
             "permissionDecisionReason": text,
             # А этот - только агенту, рядом с результатом вызова.
-            "additionalContext": msg("guard.confirm_context", details=text),
+            "additionalContext": msg("guard.confirm_context", details=details),
         }
     }
     sys.stdout.write(json.dumps(payload, ensure_ascii=True))

@@ -121,13 +121,30 @@ class GateTestCase(unittest.TestCase):
 
 
 class CommitGate(GateTestCase):
+    def context(self, command):
+        """Текст для агента рядом с окном."""
+        block = self.run_gate({"tool_name": "Bash", "tool_input": {"command": command}})
+        return block.get("additionalContext", "") if block else ""
+
     def test_asks_for_unreviewed_code_commit(self):
         self.write("app.py", "print(2)\n")
         self.git("add", "app.py")
         decision, text = self.decide('git commit -m "fix"')
         self.assertEqual(decision, "ask")
         self.assertIn("app.py", text)
-        self.assertIn("abt-review-approve", text)
+        # Как получить одобрение - агенту, а не человеку в окне.
+        self.assertIn("abt-review-approve", self.context('git commit -m "fix"'))
+
+    def test_window_text_is_short(self):
+        # Скриншоты пользователя: окно на шесть абзацев справки на каждом коммите.
+        # Человеку - одна строка, подробности - агенту.
+        self.write("app.py", "print(2)\n")
+        for command in ('git commit -am "fix"', "git add '*.py' && git commit -m x"):
+            with self.subTest(command=command):
+                decision, text = self.decide(command)
+                self.assertEqual(decision, "ask")
+                self.assertLess(len(text), 220, text)
+                self.assertNotIn("\n", text)
 
     def test_approved_state_goes_through(self):
         self.write("app.py", "print(2)\n")
@@ -192,13 +209,98 @@ class CommitGate(GateTestCase):
     def test_nothing_staged_is_silent(self):
         self.assertEqual(self.decide("git commit --amend --no-edit"), (None, None))
 
-    def test_specific_files_cannot_be_matched(self):
+    def test_add_files_and_commit_is_checked_not_guessed(self):
+        # Самая частая форма у агентов. Раньше - всегда «не могу сверить».
         self.write("app.py", "print(2)\n")
         decision, text = self.decide('git add app.py && git commit -m "fix"')
         self.assertEqual(decision, "ask")
-        self.assertIn("cannot match", text)
-        self.assertEqual(self.decide('git commit -m "fix" -- app.py')[0], "ask")
-        self.assertIn("cannot match", self.decide("git commit app.py")[1])
+        self.assertNotIn("cannot match", text)
+        self.approve()
+        for command in ('git add app.py && git commit -m "fix"', 'git commit -m "fix" -- app.py',
+                        "git commit app.py -m fix"):
+            with self.subTest(command=command):
+                self.assertEqual(self.decide(command), (None, None))
+
+    def test_docs_only_commit_with_specific_files_is_silent(self):
+        # Скриншот: окно на коммите одного CHANGELOG, пока код рядом не готов.
+        self.write("app.py", "print(2)\n")
+        self.write("CHANGELOG.md", "# changes\n")
+        for command in ("git add CHANGELOG.md && git commit -m notes",
+                        "git commit CHANGELOG.md -m notes"):
+            with self.subTest(command=command):
+                self.assertEqual(self.decide(command), (None, None))
+
+    def test_partial_commit_of_reviewed_content_is_silent(self):
+        self.write("app.py", "print(2)\n")
+        self.write("other.py", "x = 1\n")
+        self.approve()
+        self.assertEqual(self.decide("git add app.py && git commit -m part"), (None, None))
+        # Файл правили после ревью - этого содержимого ревьюер не видел.
+        self.write("app.py", "print(3)\n")
+        self.assertEqual(self.decide("git add app.py && git commit -m part")[0], "ask")
+
+    def test_file_reverted_to_head_is_not_a_change(self):
+        # app.py проиндексирован изменённым, потом в рабочей копии возвращён к
+        # HEAD: git add его «отменяет», и в коммите он не меняется вовсе.
+        self.write("app.py", "print(2)\n")
+        self.git("add", "app.py")
+        self.write("app.py", "print(1)\n")
+        self.write("other.py", "x = 1\n")
+        self.approve()
+        self.assertEqual(self.decide("git add app.py other.py && git commit -m x"), (None, None))
+
+    def test_unreviewed_file_in_a_partial_commit_asks(self):
+        self.write("app.py", "print(2)\n")
+        self.approve()
+        self.write("late.py", "y = 2\n")
+        self.assertEqual(self.decide("git add app.py late.py && git commit -m x")[0], "ask")
+
+    def test_add_directory_is_computed(self):
+        self.write("pkg/a.py", "a = 1\n")
+        self.write("pkg/b.py", "b = 1\n")
+        self.assertEqual(self.decide("git add pkg && git commit -m x")[0], "ask")
+        self.approve()
+        self.assertEqual(self.decide("git add pkg/ && git commit -m x"), (None, None))
+
+    def test_commit_directory_includes_already_staged_files(self):
+        # Внешнее ревью 1.21.1: foo.py проиндексирован в том же виде, что в
+        # рабочей копии, и `git commit pkg/` его коммитит - а вычисление его теряло.
+        self.write("pkg/foo.py", "foo = 1\n")
+        self.git("add", "pkg/foo.py")
+        self.assertEqual(self.decide("git commit pkg/ -m x")[0], "ask")
+        self.assertEqual(self.decide("git add pkg && git commit -m x")[0], "ask")
+
+    def test_opt_out_name_elsewhere_does_not_ask(self):
+        self.assertEqual(self.decide("touch src/.no-review-gate"), (None, None))
+
+    def test_staged_deletion_by_path(self):
+        os.remove(os.path.join(self.repo, "app.py"))
+        self.assertEqual(self.decide("git add app.py && git commit -m rm")[0], "ask")
+        self.approve()
+        self.assertEqual(self.decide("git add app.py && git commit -m rm"), (None, None))
+
+    def test_globs_and_patch_mode_stay_unverifiable(self):
+        self.write("app.py", "print(2)\n")
+        self.approve()
+        for command in ("git add '*.py' && git commit -m x", "git add -p && git commit -m x",
+                        "git commit --patch -m x"):
+            with self.subTest(command=command):
+                decision, text = self.decide(command)
+                self.assertEqual(decision, "ask")
+                self.assertIn("cannot match", text)
+
+    def test_opt_out_file_silences_the_gate(self):
+        self.write("app.py", "print(2)\n")
+        self.write(".claude/.no-review-gate", "")
+        self.assertEqual(self.decide('git commit -am "fix"'), (None, None))
+
+    def test_writing_the_opt_out_file_needs_a_human(self):
+        decision, text = self.decide("touch .claude/.no-review-gate")
+        self.assertEqual(decision, "ask")
+        self.assertIn("review gate", text)
+        block = self.run_gate({"tool_name": "Write", "tool_input": {
+            "file_path": os.path.join(self.repo, ".claude", ".no-review-gate")}})
+        self.assertEqual(block["permissionDecision"], "ask")
 
     def test_message_value_is_not_taken_for_a_path(self):
         # Значение -m и слипшихся ключей - не путь: иначе каждый коммит стал бы

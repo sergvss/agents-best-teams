@@ -819,6 +819,22 @@ MESSAGES = {
     },
     # -- шлюз ревью (review_gate.py) -----------------------------------------
     "review.gate_missing": {
+        "ru": "CONFIRM [W/Write]: коммит кода без ревью - {count}: {files}. "
+              "Да - коммитить без ревью, Нет - сначала code-reviewer.",
+        "en": "CONFIRM [W/Write]: committing code without a review - {count}: {files}. "
+              "Yes - commit without a review, No - run code-reviewer first.",
+    },
+    "review.gate_unverifiable": {
+        "ru": "CONFIRM [W/Write]: коммит, который шлюз ревью не может сверить с одобрением. "
+              "Да - коммитить так, Нет - агент проиндексирует отдельной командой.",
+        "en": "CONFIRM [W/Write]: a commit the review gate cannot match against an approval. "
+              "Yes - commit anyway, No - the agent stages it with a separate command.",
+    },
+    "review.optout_write": {
+        "ru": "CONFIRM [W/Write]: {path} выключает шлюз ревью в этом проекте.",
+        "en": "CONFIRM [W/Write]: {path} turns off the review gate in this project.",
+    },
+    "review.gate_missing_details": {
         "ru": "CONFIRM [W/Write]: git commit кода без ревью.\n\n"
               "В коммит идут изменения кода ({count}: {files}), а code-reviewer не одобрял "
               "именно это состояние. Шаг «Ревью» пропущен, или после одобрения были правки - "
@@ -840,7 +856,7 @@ MESSAGES = {
               "  2. Approve if a review is deliberately not needed - for example, a trivial "
               "Tier 1 change",
     },
-    "review.gate_unverifiable": {
+    "review.gate_unverifiable_details": {
         "ru": "CONFIRM [W/Write]: git commit, который хук не может сверить с ревью.\n\n"
               "Хук проверяет состояние до запуска команды, а здесь оно может измениться "
               "или оказаться другим: коммит берёт отдельные пути; перед коммитом в той же "

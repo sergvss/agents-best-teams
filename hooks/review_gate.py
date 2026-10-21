@@ -68,6 +68,9 @@ MARKER = "abt-review-approve"
 # worktree свой (git rev-parse --git-path).
 APPROVALS_FILE = "abt-review-approvals.json"
 MAX_APPROVALS = 50
+# Пустой файл в проекте выключает шлюз. Запись в него - через окно: иначе агент
+# выключил бы шлюз сам.
+OPT_OUT = os.path.join(".claude", ".no-review-gate")
 GIT_TIMEOUT_S = 8
 
 
@@ -131,6 +134,10 @@ GIT_BUILTINS = GIT_READ_ONLY | {
 
 class GitStateError(Exception):
     """Репозиторий есть, но git не смог описать его состояние."""
+
+
+class Unverifiable(Exception):
+    """Что уйдёт в коммит, по команде не вычислить: маска, путь вне репозитория."""
 
 
 
@@ -207,6 +214,15 @@ def is_marker(tokens):
     return basename(tokens[0]) == "echo" and len(tokens) > 1 and tokens[1] == MARKER
 
 
+def is_opt_out(target, workdir=None):
+    """True, если путь - выключатель шлюза .claude/.no-review-gate (два последних сегмента)."""
+    raw = target.strip("\"'").replace("\\", "/")
+    if workdir and not is_absolute(raw):
+        raw = workdir.replace("\\", "/").rstrip("/") + "/" + raw
+    parts = [part.lower() for part in raw.split("/") if part and part != "."]
+    return parts[-2:] == [".claude", ".no-review-gate"]
+
+
 def is_approvals_file(path):
     return path_basename(path.strip("\"'")) == APPROVALS_FILE
 
@@ -230,31 +246,49 @@ def strip_redirects(args):
 
 
 def add_scope(args):
-    """Что проиндексирует git add: всё, отслеживаемые или неизвестно что."""
+    """
+    (широта, пути) для git add: всё, отслеживаемые, отдельные пути или неизвестно что.
+
+    `git add <файлы> && git commit` - самая частая форма коммита у агентов.
+    Пока она считалась несверяемой, окно открывалось почти на каждом коммите,
+    даже на коммите одного CHANGELOG.
+    """
     args = strip_redirects(args)
     if any(a in ("-A", "--all", ".", ":/", "--no-ignore-removal") for a in args):
-        return "all"
+        return "all", []
     if any(a in ("-u", "--update") for a in args):
-        return "tracked"
-    return "unknown"
+        return "tracked", []
+    paths = []
+    for arg in args:
+        if arg in ("--", "-v", "--verbose", "-f", "--force"):
+            continue
+        if arg.startswith("-"):
+            # -p, -i, -N, --chmod и прочее: результат по тексту не вычислить.
+            return "unknown", []
+        paths.append(arg)
+    return ("paths", paths) if paths else ("index", [])
 
 
 def commit_scope(args):
     """Что возьмёт git commit: индекс, ещё и отслеживаемые (-a) или неизвестно что."""
     args = strip_redirects(args)
     scope = "index"
+    paths = []
+    include = False
     index = 0
     while index < len(args):
         arg = args[index]
         if arg == "--":
-            return "unknown" if args[index + 1:] else scope
+            paths += args[index + 1:]
+            break
         if arg.startswith("--"):
             name = arg.split("=", 1)[0]
             if name == "--all":
                 scope = "tracked"
-            elif name in ("--only", "--include", "--interactive", "--patch",
-                          "--pathspec-from-file"):
-                return "unknown"
+            elif name == "--include":
+                include = True
+            elif name in ("--interactive", "--patch", "--pathspec-from-file"):
+                return "unknown", []
             elif name in COMMIT_LONG_WITH_VALUE and "=" not in arg:
                 index += 1
         elif arg.startswith("-") and len(arg) > 1:
@@ -262,8 +296,10 @@ def commit_scope(args):
             for position, char in enumerate(arg[1:], 1):
                 if char == "a":
                     scope = "tracked"
-                elif char in "oip":
-                    return "unknown"
+                elif char == "i":
+                    include = True
+                elif char in "p":
+                    return "unknown", []
                 elif char in COMMIT_SHORT_ATTACHED:
                     break
                 elif char in COMMIT_SHORT_WITH_VALUE:
@@ -271,16 +307,82 @@ def commit_scope(args):
                         index += 1
                     break
         else:
-            # Позиционный аргумент — путь: коммит отдельных файлов.
-            return "unknown"
+            paths.append(arg)
         index += 1
-    return scope
+    if not paths:
+        return scope, []
+    # С путями без --include git коммитит только их содержимое из рабочей
+    # копии, а остальное проиндексированное откладывает (--only).
+    return ("index" if include else "only"), paths
 
 
 def widest(first, second):
     if "unknown" in (first, second):
         return "unknown"
     return max(first, second, key=SCOPES.index)
+
+
+def hash_paths(top, paths, run):
+    """Хэши содержимого файлов рабочей копии - без записи в репозиторий."""
+    present = [p for p in paths if os.path.isfile(os.path.join(top, p))]
+    if any("\n" in p for p in present):
+        # --stdin-paths делит по строкам: такой путь хэш посчитать не даст.
+        raise GitStateError("newline in path")
+    if not present:
+        return {}
+    hashes = run("hash-object", "--stdin-paths", stdin="\n".join(present).encode("utf-8")).split()
+    if len(hashes) != len(present):
+        raise GitStateError("hash-object")
+    return dict(zip(present, hashes))
+
+
+def spec_paths(top, specs, run, base="HEAD"):
+    """Пути репозитория, которые изменят `git add <пути>` или `git commit <пути>`."""
+    out = set()
+    for cwd, items in specs:
+        for item in items:
+            if item.startswith(":") or any(char in item for char in "*?["):
+                raise Unverifiable(item)
+            full = os.path.normpath(os.path.join(cwd, item))
+            try:
+                rel = os.path.relpath(full, top).replace("\\", "/")
+            except ValueError:
+                raise Unverifiable(item)
+            if rel.startswith(".."):
+                raise Unverifiable(item)
+            if os.path.isdir(full):
+                scope = ["--", rel] if rel != "." else []
+                out |= set(nul_list(run("ls-files", "-m", "-o", "-d", "--exclude-standard", "-z", *scope)))
+                # И то, что уже проиндексировано в том же виде, что в рабочей
+                # копии: `git add src/foo.py` и затем `git commit src/` коммитит
+                # foo.py, а ls-files -m его не покажет (внешнее ревью 1.21.1).
+                out |= set(nul_list(run("diff", "--cached", "--name-only", "--no-renames", "-z",
+                                        base, *scope)))
+            elif os.path.isfile(full) or nul_list(run("ls-files", "-z", "--", rel)):
+                # Файл есть - его содержимое; файла нет, но он отслеживается - удаление.
+                out.add(rel)
+            else:
+                raise Unverifiable(item)
+    return out
+
+
+def apply_specs(top, base, blobs, paths, run):
+    """Накладывает на состояние содержимое путей из рабочей копии, как сделал бы git."""
+    if not paths:
+        return
+    new = hash_paths(top, sorted(paths), run)
+    listing = run("ls-tree", "-r", "-z", base) if len(paths) > 200 else \
+        run("ls-tree", "-r", "-z", base, "--", *sorted(paths))
+    base_blobs = {}
+    for entry in nul_list(listing):
+        meta, _, item = entry.partition("\t")
+        base_blobs[item] = meta.split()[2]
+    for item in paths:
+        blob = new.get(item, "-")
+        if blob == base_blobs.get(item, "-"):
+            blobs.pop(item, None)  # содержимое вернулось к HEAD - не изменение
+        else:
+            blobs[item] = blob
 
 
 # ---------------------------------------------------------------------------
@@ -304,19 +406,17 @@ def nul_list(text):
     return [item for item in (text or "").split("\0") if item]
 
 
-def fingerprint(repo, scope):
+def commit_state(repo, scope, specs=()):
     """
-    (отпечаток, пути, корень репозитория) для того, что уйдёт в коммит.
+    (пары «путь -> хэш», корень репозитория) для того, что уйдёт в коммит.
 
     None — только если это не репозиторий: такой коммит не пройдёт и без хука.
     Сбой git внутри репозитория — GitStateError, а не None: молчаливый пропуск
     сделал бы из нечитаемого файла способ закоммитить код без ревью.
 
-    Отпечаток — sha256 по отсортированным парам «путь, хэш содержимого» для
-    путей, отличающихся от HEAD; удалённый путь даёт «-». Хэши рабочей копии
-    считает `git hash-object` без -w: с теми же фильтрами, что и `git add`,
-    поэтому проиндексированное и одобренное в рабочей копии совпадают, а в
-    репозиторий хук ничего не пишет.
+    Пары — пути, отличающиеся от HEAD, и хэш их содержимого; удалённый путь
+    даёт «-». Хэши рабочей копии считает `git hash-object` без -w: с теми же
+    фильтрами, что и `git add`, а в репозиторий хук ничего не пишет.
     """
     top = git(repo, "rev-parse", "--show-toplevel")
     if top is None:
@@ -336,37 +436,43 @@ def fingerprint(repo, scope):
         # репозитория (sha1 или sha256), вычисленное без записи.
         base = run("hash-object", "-t", "tree", "--stdin", stdin=b"").strip()
 
+    blobs = {}
     if scope == "index":
         paths = nul_list(run("diff", "--cached", "--name-only", "--no-renames", "-z", base))
-        blobs = {}
         if paths:
             # Весь индекс одним вызовом, без путей в аргументах: длинный список
             # упёрся бы в предел командной строки. «режим хэш стадия\tпуть».
             wanted = set(paths)
             for entry in nul_list(run("ls-files", "-s", "-z")):
-                meta, _, path = entry.partition("\t")
-                if path in wanted:
-                    blobs[path] = meta.split()[1]
-    else:
+                meta, _, item = entry.partition("\t")
+                if item in wanted:
+                    blobs[item] = meta.split()[1]
+            for item in paths:
+                blobs.setdefault(item, "-")
+    elif scope in ("tracked", "all"):
         paths = nul_list(run("diff", "--name-only", "--no-renames", "-z", base))
         if scope == "all":
             untracked = nul_list(run("ls-files", "--others", "--exclude-standard", "-z"))
             paths = sorted(set(paths) | set(untracked))
-        present = [p for p in paths if os.path.isfile(os.path.join(top, p))]
-        if any("\n" in p for p in present):
-            # --stdin-paths делит по строкам: такой путь хэш посчитать не даст.
-            raise GitStateError("newline in path")
-        blobs = {}
-        if present:
-            hashes = run("hash-object", "--stdin-paths",
-                         stdin="\n".join(present).encode("utf-8")).split()
-            if len(hashes) != len(present):
-                raise GitStateError("hash-object")
-            blobs = dict(zip(present, hashes))
+        hashed = hash_paths(top, paths, run)
+        blobs = {item: hashed.get(item, "-") for item in paths}
+    # scope "only": коммит берёт только пути из команды - начинаем с пустого.
+    apply_specs(top, base, blobs, spec_paths(top, specs, run, base), run)
+    return blobs, top
 
-    pairs = sorted("{}\0{}".format(path, blobs.get(path, "-")) for path in paths)
-    digest = hashlib.sha256("\n".join(pairs).encode("utf-8")).hexdigest()
-    return digest, paths, top
+
+def digest_of(blobs):
+    pairs = sorted("{}\0{}".format(item, blob) for item, blob in blobs.items())
+    return hashlib.sha256("\n".join(pairs).encode("utf-8")).hexdigest()
+
+
+def fingerprint(repo, scope):
+    """(отпечаток, пути, корень) — для одобрений, записанных до 1.21.1."""
+    state = commit_state(repo, scope)
+    if state is None:
+        return None
+    blobs, top = state
+    return digest_of(blobs), sorted(blobs), top
 
 
 def approvals_path(top):
@@ -418,24 +524,37 @@ def team_has_reviewer(root):
 # ---------------------------------------------------------------------------
 # Режимы
 # ---------------------------------------------------------------------------
-def check_commit(repo, scope):
+def check_commit(repo, scope, specs=()):
     """Открывает окно, если коммит кода не одобрен; иначе молчит."""
     if scope == "unknown":
-        confirm(msg("review.gate_unverifiable"))
+        confirm(msg("review.gate_unverifiable"), msg("review.gate_unverifiable_details"))
         return
-    state = fingerprint(repo, scope)
+    try:
+        state = commit_state(repo, scope, specs)
+    except Unverifiable:
+        confirm(msg("review.gate_unverifiable"), msg("review.gate_unverifiable_details"))
+        return
     if state is None:
         # Не репозиторий: такой коммит не пройдёт и без нас.
         return
-    digest, paths, top = state
-    code = [path for path in paths if not is_doc(path)]
+    blobs, top = state
+    code = sorted(item for item in blobs if not is_doc(item))
     if not code:
         return
-    approved = {fp for entry in read_approvals(top) for fp in entry.get("fingerprints") or []}
-    if digest in approved:
-        return
-    shown = ", ".join(code[:5]) + (", ..." if len(code) > 5 else "")
-    confirm(msg("review.gate_missing", count=len(code), files=shown))
+    digest = digest_of(blobs)
+    wanted = {"{}\0{}".format(item, blobs[item]) for item in code}
+    for entry in read_approvals(top):
+        # Точное совпадение состояния - формат одобрений до 1.21.1.
+        if digest in (entry.get("fingerprints") or []):
+            return
+        # Каждый файл кода в коммите - ровно в том виде, что видел ревьюер.
+        # Частичный коммит проверенного проходит; файл, которого ревьюер не
+        # видел или который правили после него, - нет.
+        if wanted <= set(entry.get("pairs") or []):
+            return
+    shown = ", ".join(code[:3]) + (", ..." if len(code) > 3 else "")
+    confirm(msg("review.gate_missing", count=len(code), files=shown),
+            msg("review.gate_missing_details"))
 
 
 def pre_bash(data):
@@ -445,10 +564,12 @@ def pre_bash(data):
 
     # Шлюз выключен без роли ревьюера, и тогда незачем разбирать git и звать
     # git config для алиасов. Защита маркера и файла одобрений действует всегда.
-    gated = team_has_reviewer(project_root(data))
+    root = project_root(data)
+    gated = team_has_reviewer(root) and not os.path.exists(os.path.join(root, OPT_OUT))
     git_env = GIT_ENV.search(command) is not None
     alias_defined = False
     staging = "index"
+    specs = []
     commits = []
     for tokens, cwd, workdir in segments(command, base):
         if is_marker(tokens) and agent != REVIEWER:
@@ -460,6 +581,8 @@ def pre_bash(data):
             # workdir в виде guard.py, а не абсолютный cwd: сессия из worktree в
             # .claude/worktrees/ иначе считала бы каждую запись записью в .claude.
             note_platform_write(target, workdir)
+            if is_opt_out(target, workdir):
+                confirm(msg("review.optout_write", path=target))
         call = git_call(tokens, cwd)
         if call is None:
             # Запись или неизвестная команда до коммита меняет то, что уйдёт
@@ -479,37 +602,47 @@ def pre_bash(data):
             alias = git_alias(repo, subcommand)
             if alias is None:
                 if alias_defined:
-                    commits.append((repo, "unknown"))
+                    commits.append((repo, "unknown", []))
                 else:
                     staging = "unknown"
                 continue
             if alias.startswith("!"):
                 # Алиас-команда оболочки: что она сделает, по тексту не видно.
-                commits.append((repo, "unknown"))
+                commits.append((repo, "unknown", []))
                 continue
             try:
                 expanded = shlex.split(alias)
             except ValueError:
-                commits.append((repo, "unknown"))
+                commits.append((repo, "unknown", []))
                 continue
             if not expanded:
                 continue
             subcommand, args = expanded[0], expanded[1:] + list(args)
         if subcommand in ("add", "stage"):
-            staging = widest(staging, add_scope(args))
+            scope, paths = add_scope(args)
+            if scope == "paths":
+                specs.append((cwd, paths))
+            else:
+                staging = widest(staging, scope)
         elif subcommand == "commit":
-            scope = "unknown" if relocated or git_env else commit_scope(args)
-            commits.append((repo, widest(staging, scope)))
+            scope, paths = ("unknown", []) if relocated or git_env else commit_scope(args)
+            if staging == "unknown" or scope == "unknown":
+                commits.append((repo, "unknown", []))
+            elif scope == "only":
+                # Коммит путей: только их содержимое, индекс и git add до него не важны.
+                commits.append((repo, "only", [(cwd, paths)]))
+            else:
+                commits.append((repo, widest(staging, scope), specs + [(cwd, paths)]))
         elif subcommand == "commit-tree":
             # Низкоуровневое создание коммита: сверять отпечаток не с чем.
-            commits.append((repo, "unknown"))
+            commits.append((repo, "unknown", []))
         elif subcommand not in GIT_READ_ONLY or writes:
             staging = "unknown"
 
     if commits:
-        for repo, scope in commits:
+        for repo, scope, commit_specs in commits:
             try:
-                check_commit(repo, scope)
+                check_commit(repo, scope, commit_specs)
             except Exception as error:  # noqa: BLE001 - сбой хука не должен пропускать молча
                 confirm(msg("review.gate_error", error=type(error).__name__))
     emit_confirmation(data.get("permission_mode") or "")
@@ -520,6 +653,9 @@ def pre_path(data):
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if data.get("tool_name") in WRITE_TOOLS and path and is_approvals_file(path):
         deny(msg("review.approvals_protected", path=path))
+    if data.get("tool_name") in WRITE_TOOLS and path and is_opt_out(path):
+        confirm(msg("review.optout_write", path=path))
+        emit_confirmation(data.get("permission_mode") or "")
 
 
 def post_context(text):
@@ -542,14 +678,17 @@ def record(data):
     # Все три широты сразу: ревьюер смотрел рабочую копию, а коммит может
     # взять индекс, -a или git add -A — любое из них совпадёт с одобренным.
     try:
-        states = [state for state in (fingerprint(repo, scope) for scope in SCOPES) if state]
+        states = [state for state in (commit_state(repo, scope) for scope in SCOPES) if state]
     except GitStateError:
         states = []
     if not states:
         post_context(msg("review.record_failed", path=repo))
         return
-    top = states[0][2]
-    prints = sorted({digest for digest, paths, _ in states if paths})
+    top = states[0][1]
+    prints = sorted({digest_of(blobs) for blobs, _ in states if blobs})
+    # Пары «путь, хэш» всех трёх широт: коммит одобрен, если каждый его файл
+    # кода есть здесь в том же виде. Индекс и рабочая копия ревьюер видел оба.
+    pairs = sorted({"{}\0{}".format(item, blob) for blobs, _ in states for item, blob in blobs.items()})
     if not prints:
         post_context(msg("review.nothing_to_approve"))
         return
@@ -563,12 +702,13 @@ def record(data):
         "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "note": " ".join(tokens[2:])[:300],
         "fingerprints": prints,
+        "pairs": pairs,
     })
     # Через временный файл: оборванная запись не должна стереть прежние одобрения.
     with open(path + ".tmp", "w", encoding="utf-8") as fh:
         json.dump({"approvals": approvals[-MAX_APPROVALS:]}, fh, ensure_ascii=False, indent=1)
     os.replace(path + ".tmp", path)
-    post_context(msg("review.recorded", count=max(len(paths) for _, paths, _ in states)))
+    post_context(msg("review.recorded", count=max(len(blobs) for blobs, _ in states)))
 
 
 def main():
