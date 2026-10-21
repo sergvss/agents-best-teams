@@ -161,6 +161,24 @@ class TestCountsMatchReality(unittest.TestCase):
                               if n.endswith(".md")]),
         }
 
+    def test_python_occurrence_count_is_current(self):
+        # Число вхождений `python` в конфигурации названо словом в трёх местах:
+        # человек на macOS и Linux меняет их все, и устаревшее число оставит
+        # часть хуков молчать. Каждый новый хук это число меняет.
+        words = {12: ("twelve", "двенадцать"), 15: ("fifteen", "пятнадцать"),
+                 18: ("eighteen", "восемнадцать")}
+        counts = {read(os.path.join(REPO, "hooks", name)).count('"command": "python"')
+                  for name in ("hooks.json", "settings.example.json")}
+        self.assertEqual(len(counts), 1, "конфигурации расходятся по числу хуков")
+        count = counts.pop()
+        self.assertIn(count, words, "добавь слово для числа {}".format(count))
+        en, ru = words[count]
+        for name, pattern in (("README.md", en + " of them per configuration file"),
+                              ("README.ru.md", "их " + ru + " на файл конфигурации"),
+                              (os.path.join("hooks", "README.md"), "их " + ru + ", и они")):
+            with self.subTest(file=name):
+                self.assertIn(pattern, read(os.path.join(REPO, name)))
+
     def test_readme_numbers(self):
         cases = [
             ("README.md", r"(\d+)\s+principles", "принципы"),

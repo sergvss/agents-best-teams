@@ -772,6 +772,152 @@ MESSAGES = {
               "PERMISSION NEEDED block, ask the user the same way and, if allowed, run that "
               "action yourself in this conversation.",
     },
+    "session.verify_reminder": {
+        "ru": "В проекте есть тесты, а Stop-хук `verify.py` не включён: агент может "
+              "закончить работу с падающими тестами, и никто этого не остановит.\n\n"
+              "Предложи пользователю включить его одной короткой фразой в конце своего первого "
+              "ответа, не прерывая текущую задачу. Включение - блок `Stop` с командой тестов "
+              "проекта, см. раздел «Stop-хук» в `hooks/README.md` плагина agents-best-teams. "
+              "Если пользователь откажется - не возвращайся к теме в этой сессии. Отключить "
+              "напоминание насовсем: создать пустой файл `{opt_out}`.",
+        "en": "The project has tests, but the `verify.py` Stop hook is not enabled: an agent "
+              "can finish its work with failing tests and nothing will stop it.\n\n"
+              "Suggest enabling it to the user in one short sentence at the end of your first "
+              "reply, without interrupting the current task. Enabling it means a `Stop` block "
+              "with the project's test command, see the \"Stop hook\" section of `hooks/README.md` "
+              "in the agents-best-teams plugin. If the user declines, do not raise it again this "
+              "session. To silence the reminder for good: create an empty `{opt_out}` file.",
+    },
+    "guard.confirm_bypass_platform_write": {
+        "ru": "BLOCKED [P/Privileged]: действие требует подтверждения человека, но окно в "
+              "этом вызове не сработает.\n\n"
+              "Почему: вызов пишет в {paths}. В режиме bypassPermissions Claude Code сам "
+              "одобряет запись в .git/ и .claude/ и вместе с ней пропускает весь вызов - окно "
+              "хука отменяется. Поэтому вместо окна отказ.\n\n"
+              "Что требовало подтверждения:\n\n{details}\n\n"
+              "Альтернативы:\n"
+              "  1. Разделить команду: запись в .git/ или .claude/ - отдельным вызовом, "
+              "действие, требующее подтверждения, - отдельным\n"
+              "  2. Выполнить это действие вне режима bypassPermissions или вручную",
+        "en": "BLOCKED [P/Privileged]: this action needs a human confirmation, but the prompt "
+              "would not work in this call.\n\n"
+              "Why: the call writes to {paths}. In bypassPermissions mode Claude Code approves "
+              "writes to .git/ and .claude/ by itself and lets the whole call through with "
+              "them - the hook's prompt is cancelled. So this is a block instead of a prompt.\n\n"
+              "What needed a confirmation:\n\n{details}\n\n"
+              "Alternatives:\n"
+              "  1. Split the command: the write to .git/ or .claude/ in one call, the action "
+              "that needs a confirmation in another\n"
+              "  2. Run this action outside bypassPermissions mode or by hand",
+    },
+    # -- шлюз ревью (review_gate.py) -----------------------------------------
+    "review.gate_missing": {
+        "ru": "CONFIRM [W/Write]: git commit кода без ревью.\n\n"
+              "В коммит идут изменения кода ({count}: {files}), а code-reviewer не одобрял "
+              "именно это состояние. Шаг «Ревью» пропущен, или после одобрения были правки - "
+              "любая правка требует нового ревью.\n\n"
+              "Альтернативы:\n"
+              "  1. Отклонить и вызвать роль code-reviewer. После ревью без блокеров она "
+              "выполнит `echo abt-review-approve \"<что проверено>\"`, и этот коммит пройдёт "
+              "без окна\n"
+              "  2. Подтвердить, если ревью сознательно не нужно - например, тривиальная "
+              "правка Tier 1",
+        "en": "CONFIRM [W/Write]: git commit of code without a review.\n\n"
+              "The commit contains code changes ({count}: {files}), and code-reviewer has not "
+              "approved this exact state. Either the review step was skipped or there were "
+              "edits after the approval - any edit needs a new review.\n\n"
+              "Alternatives:\n"
+              "  1. Decline and call the code-reviewer role. After a review with no blockers it "
+              "runs `echo abt-review-approve \"<what was checked>\"`, and this commit goes "
+              "through without a prompt\n"
+              "  2. Approve if a review is deliberately not needed - for example, a trivial "
+              "Tier 1 change",
+    },
+    "review.gate_unverifiable": {
+        "ru": "CONFIRM [W/Write]: git commit, который хук не может сверить с ревью.\n\n"
+              "Хук проверяет состояние до запуска команды, а здесь оно может измениться "
+              "или оказаться другим: коммит берёт отдельные пути; перед коммитом в той же "
+              "команде что-то меняет файлы или индекс (запись, git add <файлы>, git rm, "
+              "сборка); репозиторий задан иначе (--work-tree, GIT_DIR, GIT_INDEX_FILE); "
+              "коммит идёт через алиас-команду. Что именно уйдёт в коммит, хук не знает.\n\n"
+              "Альтернативы:\n"
+              "  1. Отклонить, проиндексировать изменения отдельной командой и повторить "
+              "git commit без путей - тогда хук сверит одобрение\n"
+              "  2. Подтвердить, если ревью этого состояния уже было или не нужно",
+        "en": "CONFIRM [W/Write]: a git commit the hook cannot match against a review.\n\n"
+              "The hook checks the state before the command runs, and here it may change or "
+              "be a different one: the commit takes specific paths; something before the "
+              "commit in the same command changes files or the index (a write, git add "
+              "<files>, git rm, a build); the repository is set differently (--work-tree, "
+              "GIT_DIR, GIT_INDEX_FILE); the commit goes through a shell alias. The hook "
+              "cannot tell what exactly goes into the commit.\n\n"
+              "Alternatives:\n"
+              "  1. Decline, stage the changes with a separate command and repeat git commit "
+              "without paths - then the hook checks the approval\n"
+              "  2. Approve if this state was already reviewed or needs no review",
+    },
+    "review.gate_error": {
+        "ru": "CONFIRM [W/Write]: шлюз ревью не смог проверить этот коммит ({error}).\n\n"
+              "Это сбой хука, а не решение о коде: было ли ревью, проверить не удалось. "
+              "Подтверди, если ревью было или не нужно.",
+        "en": "CONFIRM [W/Write]: the review gate could not check this commit ({error}).\n\n"
+              "This is a hook failure, not a verdict on the code: whether a review happened "
+              "could not be checked. Approve if there was a review or none is needed.",
+    },
+    "review.approve_not_reviewer": {
+        "ru": "BLOCKED [W/Write]: одобрение ревью записывает только роль code-reviewer, а "
+              "эту команду выполняет {who}.\n\n"
+              "Почему: одобрение пропускает коммит без окна. Если его записывает тот, кто "
+              "писал код, шлюз ревью ничего не значит.\n\n"
+              "Альтернативы:\n"
+              "  1. Вызвать роль code-reviewer и поручить ей ревью\n"
+              "  2. Коммитить без одобрения - хук спросит пользователя в окне",
+        "en": "BLOCKED [W/Write]: only the code-reviewer role records a review approval, and "
+              "this command is run by {who}.\n\n"
+              "Why: an approval lets a commit through without a prompt. If whoever wrote the "
+              "code can record it, the review gate means nothing.\n\n"
+              "Alternatives:\n"
+              "  1. Call the code-reviewer role and give it the review\n"
+              "  2. Commit without an approval - the hook will ask the user in a prompt",
+    },
+    "review.who_main": {
+        "ru": "главная сессия",
+        "en": "the main session",
+    },
+    "review.approvals_protected": {
+        "ru": "BLOCKED [W/Write]: запись в {path} - файл одобрений шлюза ревью.\n\n"
+              "Почему: одобрение записывает только хук, когда code-reviewer выполняет маркер. "
+              "Правка файла напрямую выдала бы одобрение без ревью.\n\n"
+              "Альтернатива: вызвать роль code-reviewer.",
+        "en": "BLOCKED [W/Write]: writing to {path} - the review gate approvals file.\n\n"
+              "Why: only the hook records an approval, when code-reviewer runs the marker. "
+              "Editing the file directly would grant an approval without a review.\n\n"
+              "Alternative: call the code-reviewer role.",
+    },
+    "review.recorded": {
+        "ru": "Шлюз ревью: одобрение записано, путей в изменениях: {count}. Коммит этого "
+              "состояния пройдёт без окна. Любая правка после одобрения потребует нового ревью.",
+        "en": "Review gate: approval recorded, changed paths: {count}. A commit of this state "
+              "goes through without a prompt. Any edit after the approval needs a new review.",
+    },
+    "review.nothing_to_approve": {
+        "ru": "Шлюз ревью: одобрять нечего - изменений относительно HEAD нет. Одобрение не "
+              "записано.",
+        "en": "Review gate: nothing to approve - there are no changes against HEAD. No approval "
+              "was recorded.",
+    },
+    "review.record_failed": {
+        "ru": "Шлюз ревью: одобрение не записано - git не ответил в каталоге {path}.",
+        "en": "Review gate: no approval recorded - git did not respond in {path}.",
+    },
+    "cli.review_gate_description": {
+        "ru": "Шлюз ревью для коммитов кода",
+        "en": "Review gate for code commits",
+    },
+    "cli.review_gate_record": {
+        "ru": "режим записи одобрения, для события PostToolUse",
+        "en": "approval-recording mode, for the PostToolUse event",
+    },
     "denial.subagent": {
         "ru": "Спросить пользователя ты не можешь: у субагентов нет AskUserQuestion. Если "
               "нужное действие отклонено (классификатором auto mode или защитным хуком), не "

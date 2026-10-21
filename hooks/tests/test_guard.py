@@ -1311,6 +1311,61 @@ class TestConfirmationInsteadOfDenial(GuardTestCase):
         _, reason, _ = decide(bash("git reset --hard && git reset --hard"))
         self.assertEqual(reason.count("CONFIRM ["), 1, reason)
 
+    def test_git_global_options_do_not_hide_the_subcommand(self):
+        # Внешнее ревью 1.20.0: в `git --work-tree . push --force` точка читалась
+        # подкомандой, и force-push проходил мимо правила.
+        for command in ["git --work-tree . push --force", "git --git-dir .git reset --hard",
+                        "git --namespace x push --force origin main"]:
+            with self.subTest(command=command):
+                self.assertEqual(decide(bash(command))[0], "ask")
+
+    def test_bypass_mode_with_platform_dir_write_blocks_instead_of_asking(self):
+        # Claude Code в bypassPermissions сам одобряет запись в .git/ и .claude/
+        # и вместе с ней пропускает вызов, окно хука отменяется. Проверено живым
+        # прогоном: `printf ... >> .git/info/exclude && <ask>` выполнился.
+        for command in ["printf 'x' >> .git/info/exclude && git push --force",
+                        "touch .git/x && git reset --hard",
+                        "git clean -fd; echo n > .claude/note.txt",
+                        "cd .git && echo x > info/exclude && cd .. && git reset --hard"]:
+            with self.subTest(command=command):
+                payload = bash(command)
+                payload["permission_mode"] = "bypassPermissions"
+                decision, reason, _ = decide(payload)
+                self.assertEqual(decision, "deny")
+                self.assertIn("bypassPermissions", reason)
+                self.assertIn("CONFIRM [", reason)
+
+    def test_platform_dir_write_keeps_the_window_in_other_modes(self):
+        for mode in ("default", "acceptEdits", "auto", ""):
+            with self.subTest(mode=mode):
+                payload = bash("printf 'x' >> .git/info/exclude && git push --force")
+                payload["permission_mode"] = mode
+                self.assertEqual(decide(payload)[0], "ask")
+
+    def test_bypass_mode_without_platform_dir_write_still_asks(self):
+        for command in ["git push --force", "echo x > notes.txt && git reset --hard",
+                        "cat .git/config && git reset --hard"]:
+            with self.subTest(command=command):
+                payload = bash(command)
+                payload["permission_mode"] = "bypassPermissions"
+                self.assertEqual(decide(payload)[0], "ask")
+
+    def test_bypass_mode_platform_dir_write_alone_passes(self):
+        # Без просьбы подтвердить отказывать не в чем: запись в .git/info/exclude
+        # - обычное дело, и хук не должен ей мешать.
+        payload = bash("printf 'SESSIONS.md\\n' >> .git/info/exclude")
+        payload["permission_mode"] = "bypassPermissions"
+        self.assertEqual(decide(payload), (None, None, None))
+
+    def test_bypass_mode_config_file_tool_write_is_blocked(self):
+        # Тот же механизм у инструмента Write: проверено живым прогоном, файл в
+        # .claude/ создаётся, хотя хук просит подтверждения.
+        payload = edit(".claude/agents-best-teams.json", "Write")
+        payload["permission_mode"] = "bypassPermissions"
+        self.assertEqual(decide(payload)[0], "deny")
+        payload["permission_mode"] = "default"
+        self.assertEqual(decide(payload)[0], "ask")
+
     def test_hard_rules_stay_hard(self):
         for payload in [bash("rm -rf /"), bash("rm -rf \"$DIR\""),
                         bash('psql -c "DELETE FROM users"'), bash("echo K=1 > .env"),

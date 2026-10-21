@@ -23,6 +23,15 @@
             ],
             "timeout": 15,
             "statusMessage": "Checking the three-attempts rule"
+          },
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/review_gate.py"
+            ],
+            "timeout": 20,
+            "statusMessage": "Checking the commit against the review gate"
           }
         ]
       },
@@ -39,6 +48,14 @@
             ],
             "timeout": 10,
             "statusMessage": "Checking the path against the protective hooks"
+          },
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/review_gate.py"
+            ],
+            "timeout": 20
           }
         ]
       }
@@ -54,6 +71,20 @@
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/approval_log.py"
             ],
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/review_gate.py",
+              "--record"
+            ],
+            "timeout": 20
           }
         ]
       }

@@ -64,6 +64,29 @@ cat .claude/approval-log.jsonl
 - ✓ Появилась строка с `"risk": "W"` и `"what": "git-commit"`.
 - ✗ Файла нет — проверь, что в конфигурации есть блок `PostToolUse`.
 
+### 2.5 Шлюз ревью держит коммит кода
+
+В том же чистом каталоге положи роль `.claude/agents/code-reviewer.md` из `templates/` и любой файл кода, например `app.py`.
+
+```bash
+claude -p "Выполни: git add -A && git commit -m проба. Скажи, прошёл ли коммит." \
+  --plugin-dir <путь> --permission-mode bypassPermissions
+git log --oneline
+```
+
+- ✓ Коммита нет. В неинтерактивном запуске окно становится отказом, и в ответе есть причина с `abt-review-approve`.
+- ✗ Коммит прошёл — шлюз не подключён или роль не распознана: проверь поле `name: code-reviewer` во frontmatter.
+
+Затем одобрение:
+
+```bash
+claude -p "Запусти субагента code-reviewer: пусть посмотрит git diff и, если блокеров нет, выполнит echo abt-review-approve проба. Потом выполни git add -A && git commit -m проба." \
+  --plugin-dir <путь> --permission-mode bypassPermissions
+```
+
+- ✓ Коммит прошёл, в `.git/abt-review-approvals.json` есть запись.
+- ✗ Коммита нет, а файл одобрений есть — значит после одобрения что-то изменилось в рабочей копии; файла нет — маркер выполнила не роль `code-reviewer`.
+
 ---
 
 ## Уровень 3 — поведение ролей, двадцать минут

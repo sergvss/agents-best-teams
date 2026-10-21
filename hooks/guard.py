@@ -87,6 +87,10 @@ SEGMENT_SEPARATORS = {";", "|", "||", "&&", "&", "|&", ";;", "(", ")", "`"}
 # ();<>|& — обратной кавычки там нет, и без неё она приклеивалась к слову.
 PUNCTUATION_CHARS = "();<>|&`"
 
+# Глобальные ключи git, забирающие значение отдельным токеном: git -C <путь> push.
+GIT_GLOBAL_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
+                         "--config-env", "--super-prefix"}
+
 # Глубина раскрытия вложенных sh -c. Дальше начинается не ошибка агента,
 # а намеренная обфускация, которую эти хуки закрывать не берутся.
 MAX_NESTING = 3
@@ -378,6 +382,24 @@ def deny(reason, ask=True):
 # выполнилась бы непроверенной. Так отказ всегда сильнее подтверждения.
 PENDING_CONFIRMATIONS = []
 
+# Записи этого вызова в каталоги, которые Claude Code охраняет сам. В режиме
+# bypassPermissions он одобряет такую запись автоматически и этим отменяет
+# окно хука: `printf ... >> .git/info/exclude && git push --force` в claude -p
+# выполнился, хотя тот же force-push отдельно получает отказ. Проверено
+# 21.10.2026 на Claude Code 2.1.302: запись в .git/ и .claude/ - редиректом,
+# touch и инструментом Write. В режимах default и acceptEdits утечки нет.
+PLATFORM_DIRS = {".git", ".claude"}
+PLATFORM_DIR_WRITES = []
+
+
+def note_platform_write(target, workdir=None):
+    """Запоминает запись в .git/ или .claude/: она снимает окно в bypassPermissions."""
+    raw = target.strip("\"'").replace("\\", "/")
+    if workdir and not is_absolute(raw):
+        raw = posixpath.join(workdir.replace("\\", "/"), raw)
+    if any(part in PLATFORM_DIRS for part in posixpath.normpath(raw).split("/")):
+        PLATFORM_DIR_WRITES.append(target)
+
 
 def confirm(reason):
     """
@@ -392,12 +414,17 @@ def confirm(reason):
     PENDING_CONFIRMATIONS.append(reason)
 
 
-def emit_confirmation():
+def emit_confirmation(permission_mode=""):
     """Открывает одно окно на все накопленные просьбы, если отказа не случилось."""
     if not PENDING_CONFIRMATIONS:
         return
     # Одно и то же правило в нескольких сегментах команды - один текст, а не повтор.
     text = "\n\n".join(dict.fromkeys(PENDING_CONFIRMATIONS))
+    # Окно здесь не сработало бы: Claude Code одобрит запись в свой каталог и
+    # вместе с ней всю команду. Отказ - то, чем окно и так стало бы без человека.
+    if permission_mode == "bypassPermissions" and PLATFORM_DIR_WRITES:
+        deny(msg("guard.confirm_bypass_platform_write", details=text,
+                 paths=", ".join(dict.fromkeys(PLATFORM_DIR_WRITES))))
     payload = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -844,9 +871,11 @@ def check_git(tokens):
         return
     rest = tokens[1:]
     # Пропускаем глобальные флаги вида -C <путь>, чтобы добраться до подкоманды.
+    # Не только -C и -c: в `git --work-tree . push --force` точка читалась
+    # подкомандой, и force-push проходил мимо правила (внешнее ревью 1.20.0).
     idx = 0
     while idx < len(rest) and rest[idx].startswith("-"):
-        idx += 2 if rest[idx] in ("-C", "-c") else 1
+        idx += 2 if rest[idx] in GIT_GLOBAL_WITH_VALUE else 1
     if idx >= len(rest):
         return
     subcommand = rest[idx]
@@ -1113,6 +1142,7 @@ def analyze_bash(command, enabled, agent="", depth=0):
         # Файл настроек защиты - не зависит от списка правил: он настраивает
         # сам хук, и правка без человека была бы способом расширить себе зону.
         for target in written_paths(tokens):
+            note_platform_write(target, workdir)
             if is_project_config(target, workdir):
                 confirm(msg("config.protected_write", path=target))
 
@@ -1164,19 +1194,22 @@ def main():
     tool_name = data.get("tool_name") or ""
     tool_input = data.get("tool_input") or {}
     agent = data.get("agent_type") or ""
+    mode = data.get("permission_mode") or ""
 
     if tool_name == "Bash":
         analyze_bash(tool_input.get("command") or "", enabled, agent)
-        emit_confirmation()
+        emit_confirmation(mode)
         return
 
     file_path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     for name, rule in PATH_RULES.items():
         if name in enabled:
             rule(tool_name, file_path, agent)
-    if tool_name in WRITE_TOOLS and file_path and is_project_config(file_path):
-        confirm(msg("config.protected_write", path=file_path))
-    emit_confirmation()
+    if tool_name in WRITE_TOOLS and file_path:
+        note_platform_write(file_path)
+        if is_project_config(file_path):
+            confirm(msg("config.protected_write", path=file_path))
+    emit_confirmation(mode)
 
 
 if __name__ == "__main__":

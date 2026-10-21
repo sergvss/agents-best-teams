@@ -102,6 +102,8 @@ Two things follow, and both are load-bearing:
 - **A block must explain itself and offer a replacement.** A hook that only says "no" teaches agents to look for a way around it. Every block in this repository names the reason and lists alternatives — and in live runs agents took the offered alternative rather than working around the block.
 - **False positives are the real failure mode.** A hook that gets in the way is switched off on day one, and then there is no protection at all. Half the tests in `hooks/tests/` check that the hooks stay silent when they should.
 
+The same logic covers process steps, not only destructive commands. In a live project the main agent ran a task on its own and made ten code commits without a single review. So [`hooks/review_gate.py`](../hooks/review_gate.py) asks the human before a code commit that `code-reviewer` has not approved. The approval is tied to the content: any edit after it needs a new review.
+
 Authority: `principles/09-mechanical-invariants.md`.
 
 ---

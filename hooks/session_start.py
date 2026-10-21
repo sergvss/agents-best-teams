@@ -21,6 +21,7 @@ session_start.py — SessionStart-хук: предложить разверну�
 Зависимости: только стандартная библиотека Python 3.8+.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -29,10 +30,18 @@ import sys
 # Тексты для человека — в каталоге сообщений, см. messages.py.
 from messages import LANG_FILE, SUPPORTED, msg, use_project
 # Файл настроек разбирает сам guard.py: правило одно, и разбор тоже один.
-from guard import PROJECT_CONFIG, read_project_config
+from guard import PROJECT_CONFIG, QA_TESTER_FILE_PATTERNS, read_project_config
 
 # Файл-маркер: пользователь решил, что подсказка не нужна.
 OPT_OUT = os.path.join(".claude", ".no-team-setup-prompt")
+# Свой маркер у напоминания про verify.py: гасить его заодно с предложением
+# собрать команду значило бы промолчать о тестах без проверки.
+VERIFY_OPT_OUT = os.path.join(".claude", ".no-verify-prompt")
+
+# Признаки тестов в проекте: каталоги в корне и имена тестовых файлов -
+# те же, что открывают зону qa-tester.
+TEST_DIRS = {"tests", "test", "__tests__", "spec", "specs"}
+SKIP_DIRS = {"node_modules", "venv", "dist", "build"}
 
 # Имена ролей методологии. Наличие любой из них означает, что команда уже есть.
 ROLE_NAMES = {
@@ -108,6 +117,54 @@ def team_is_set_up(cwd):
     return False
 
 
+def has_tests(cwd):
+    """
+    True, если в проекте видны тесты: тестовый каталог в корне или тестовый файл
+    на глубине до двух уровней. Глубже не смотрим: хук старта обязан быть быстрым.
+    """
+    try:
+        entries = os.listdir(cwd)
+    except OSError:
+        return False
+    for entry in entries:
+        path = os.path.join(cwd, entry)
+        if os.path.isdir(path):
+            if entry.lower() in TEST_DIRS:
+                return True
+            if entry in SKIP_DIRS or entry.startswith("."):
+                continue
+            try:
+                inner = os.listdir(path)
+            except OSError:
+                continue
+            if any(is_test_file(name) for name in inner):
+                return True
+        elif is_test_file(entry):
+            return True
+    return False
+
+
+def is_test_file(name):
+    return any(fnmatch.fnmatchcase(name, pattern) for pattern in QA_TESTER_FILE_PATTERNS)
+
+
+def verify_is_configured(cwd):
+    """True, если Stop-хук verify.py упомянут в настройках проекта или пользователя."""
+    candidates = [
+        os.path.join(cwd, ".claude", "settings.json"),
+        os.path.join(cwd, ".claude", "settings.local.json"),
+        os.path.join(os.path.expanduser("~"), ".claude", "settings.json"),
+    ]
+    for path in candidates:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                if "verify.py" in fh.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def main():
     raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     data = {}
@@ -142,6 +199,13 @@ def main():
     # язык задан, он больше не появляется.
     if not language_is_chosen(cwd):
         parts.append(msg("session.language_prompt"))
+
+    # Тесты есть, а проверка перед завершением не включена: setup-agent-team на
+    # новом проекте оставляет verify.py выключенным, и потом о нём никто не
+    # вспоминает (задача #6). Свой опт-аут, не общий с предложением команды.
+    if (not os.path.exists(os.path.join(cwd, VERIFY_OPT_OUT))
+            and has_tests(cwd) and not verify_is_configured(cwd)):
+        parts.append(msg("session.verify_reminder", opt_out=VERIFY_OPT_OUT.replace("\\", "/")))
 
     if os.path.exists(os.path.join(cwd, OPT_OUT)):
         return emit(parts)
