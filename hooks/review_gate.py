@@ -105,8 +105,19 @@ REDIRECTS = {">", ">>", ">|", "&>", ">&", "<", "<<", "<<-", "<<<"}
 # и `echo x > new.py && git add -A && git commit` прошёл бы по старому состоянию.
 READ_ONLY_COMMANDS = {
     "echo", "printf", "ls", "cat", "pwd", "true", "test", "[", "head", "tail",
-    "grep", "wc", "which", "type", "date", "sleep",
+    "grep", "wc", "which", "type", "date", "sleep", "tr", "cut", "sort", "uniq",
+    "chcp", "pytest", "py.test",
 }
+
+# Запуски тестов файлы репозитория не меняют. Замер на 4507 настоящих
+# коммитах агентов: 21% шли как `python -m pytest ... && git add ... && git
+# commit`, и шлюз считал их несверяемыми. Ключи обновления снимков - запись,
+# с ними прогон остаётся «неизвестной командой».
+PYTHON_TEST_MODULES = {"pytest", "unittest", "pyflakes", "py_compile", "mypy", "flake8"}
+NPM_TEST_SCRIPTS = {"test", "t"}
+JS_TEST_TOOLS = {"vitest", "jest", "mocha"}
+SNAPSHOT_UPDATE = {"-u", "--update", "--updateSnapshot", "--update-snapshots", "--snapshot-update",
+                   "--fix", "--write"}
 GIT_READ_ONLY = {
     "status", "diff", "log", "show", "rev-parse", "ls-files", "blame", "grep",
     "branch", "tag", "remote", "describe", "shortlog", "fetch",
@@ -249,6 +260,33 @@ def git_alias(repo, name):
     """Значение alias.<name> в этом репозитории или None."""
     value = git(repo, "config", "--get", "alias." + name)
     return value.strip() if value else None
+
+
+def is_read_only(tokens):
+    """True, если команда не меняет файлы репозитория: чтение или прогон тестов."""
+    name = basename(tokens[0]).lower()
+    args = tokens[1:]
+    if name == "timeout" and len(tokens) > 2:
+        # timeout 600 <команда>: важна сама команда.
+        return is_read_only(tokens[2:])
+    if any(arg in SNAPSHOT_UPDATE for arg in args):
+        return False
+    if name in READ_ONLY_COMMANDS:
+        return True
+    if name in ("python", "python3", "py") and "-m" in args:
+        module = args[args.index("-m") + 1] if args.index("-m") + 1 < len(args) else ""
+        return module in PYTHON_TEST_MODULES
+    if name == "npm":
+        rest = [a for a in args if not a.startswith("-")]
+        return bool(rest) and (rest[0] in NPM_TEST_SCRIPTS or
+                               (rest[0] in ("run", "run-script") and len(rest) > 1
+                                and rest[1].split(":")[0] == "test"))
+    if name == "npx":
+        rest = [a for a in args if not a.startswith("-")]
+        return bool(rest) and rest[0] in JS_TEST_TOOLS
+    if name == "node":
+        return "--test" in args
+    return False
 
 
 def is_marker(tokens):
@@ -629,7 +667,7 @@ def pre_bash(data):
         if call is None:
             # Запись или неизвестная команда до коммита меняет то, что уйдёт
             # в коммит, уже после проверки: отпечаток считается до запуска.
-            if basename(tokens[0]) not in READ_ONLY_COMMANDS or \
+            if not is_read_only(tokens) or \
                     (writes and (not gated or writes_inside_repo(writes, cwd, tops))):
                 staging = "unknown"
             continue

@@ -122,11 +122,75 @@ class GateTestCase(unittest.TestCase):
         return os.path.join(self.repo, ".git", "abt-review-approvals.json")
 
 
+# Формы команд коммита, которые агенты пишут на самом деле. Собраны из 4507
+# реальных команд в транскриптах проектов сопровождающего (21-22.10.2026) и
+# сведены к синтетическим примерам: пути, сообщения и имена файлов заменены.
+# {tmp} - каталог вне репозитория. Каждая форма из этого списка ловила или
+# могла поймать шлюз на ложном окне - три окна пользователя были из них.
+APPROVED_COMMIT_FORMS = [
+    "git commit -F- <<'EOF'\nmsg\n\nbody\nEOF",
+    "git commit -F - -- app.py <<'EOF'\nmsg\nEOF",
+    "git add app.py && git commit -F - -- app.py <<'EOF'\nmsg\nEOF\necho done; git log --oneline -1",
+    'git commit -m "a" -m "b" -m "c" 2>&1 | tail -70',
+    'git commit -q -m "x" && git push -q origin main 2>&1 | tail -1; git log --oneline -1',
+    "printf 'msg' > {tmp}/m.txt && git diff --cached --name-only && git commit -q -F {tmp}/m.txt && git log -1 --oneline",
+    "cat > {tmp}/m.txt <<'EOF'\nmsg\nEOF\ngit commit -F {tmp}/m.txt",
+    "git commit -F {tmp}/m.txt > {tmp}/commit.log 2>&1; echo exit=$?; grep -v CRLF {tmp}/commit.log | tail -2",
+    'git commit -m "$(cat <<\'EOF\'\nmsg\n\nCo-Authored-By: x <y@z>\nEOF\n)"',
+    "python -X utf8 -m pytest -q 2>&1 | tail -1; git add app.py && git commit -m x",
+    "PYTHONUTF8=1 ./venv/Scripts/python -m pytest -q tests 2>&1 | tail -2 && git add app.py && git commit -m x",
+    'python -X utf8 -m unittest discover -s tests 2>&1 | grep -E "^(Ran|OK)" && git commit -m x',
+    "python -m pyflakes src; python -X utf8 -m pytest -q 2>&1 | tail -1; git commit -m x",
+    "timeout 600 python -m pytest -q && git commit -m x",
+    "npm test 2>&1 | tail -3 && git add app.py && git commit -m x",
+    "npm run test:server 2>&1 | tail -2 && git commit -m x",
+    "npx vitest run 2>&1 | tail -3 && git commit -m x",
+    "node --test tests && git commit -m x",
+    'chcp 65001 >/dev/null 2>&1; git add app.py 2>&1 | grep -v "LF will be"; git commit -m x',
+    "git diff --cached --name-only | tr '\\n' ' ' && git commit -m x",
+    "git add app.py 2>/dev/null; git commit -F - -- app.py <<'EOF'\nmsg\nEOF\ngit push 2>&1 | tail -2",
+]
+
+# Правка файлов перед коммитом в той же команде: отпечаток считается до запуска,
+# поэтому такие формы обязаны остаться несверяемыми.
+CHANGING_COMMIT_FORMS = [
+    "python -X utf8 - <<'PY'\nopen('app.py', 'w').write('x')\nPY\ngit add app.py && git commit -m x",
+    "sed -i 's/1/2/' app.py && git commit -am x",
+    "rm -f notes.py && git add -A && git commit -m x",
+    "printf x >> app.py && git commit -am x",
+    "npx vitest run -u && git commit -am x",
+    "npm test -- --update-snapshots && git commit -am x",
+    "python tools/gen.py && git add -A && git commit -m x",
+]
+
+
 class CommitGate(GateTestCase):
     def context(self, command):
         """Текст для агента рядом с окном."""
         block = self.run_gate({"tool_name": "Bash", "tool_input": {"command": command}})
         return block.get("additionalContext", "") if block else ""
+
+    def test_real_world_forms_of_an_approved_commit_pass(self):
+        outside = tempfile.mkdtemp(prefix="abt-corpus-")
+        self.addCleanup(remove_tree, outside)
+        tmp = outside.replace("\\", "/")
+        self.write("app.py", "print(2)\n")
+        self.git("add", "app.py")
+        self.approve()
+        for form in APPROVED_COMMIT_FORMS:
+            command = form.replace("{tmp}", tmp)
+            with self.subTest(form=form.splitlines()[0][:70]):
+                self.assertEqual(self.decide(command), (None, None))
+
+    def test_real_world_forms_that_change_files_stay_unverifiable(self):
+        self.write("app.py", "print(2)\n")
+        self.git("add", "app.py")
+        self.approve()
+        for command in CHANGING_COMMIT_FORMS:
+            with self.subTest(form=command.splitlines()[0][:70]):
+                decision, text = self.decide(command)
+                self.assertEqual(decision, "ask")
+                self.assertIn("cannot match", text)
 
     def test_asks_for_unreviewed_code_commit(self):
         self.write("app.py", "print(2)\n")
