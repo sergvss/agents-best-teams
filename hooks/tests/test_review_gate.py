@@ -85,6 +85,8 @@ class GateTestCase(unittest.TestCase):
 
     def add_reviewer(self, filename="code-reviewer.md"):
         self.write(os.path.join(".claude", "agents", filename), REVIEWER_ROLE)
+        # С 1.22.0 шлюз выключен по умолчанию и включается этим файлом.
+        self.write(os.path.join(".claude", ".review-gate"), "")
         # Роль в репозитории не коммитится: каталог .claude не участвует в тестах шлюза.
         with open(os.path.join(self.repo, ".git", "info", "exclude"), "a", encoding="utf-8") as fh:
             fh.write(".claude/\n")
@@ -270,8 +272,13 @@ class CommitGate(GateTestCase):
         self.assertEqual(self.decide("git commit pkg/ -m x")[0], "ask")
         self.assertEqual(self.decide("git add pkg && git commit -m x")[0], "ask")
 
-    def test_opt_out_name_elsewhere_does_not_ask(self):
-        self.assertEqual(self.decide("touch src/.no-review-gate"), (None, None))
+    def test_switch_name_elsewhere_does_not_ask(self):
+        self.assertEqual(self.decide("touch src/.review-gate"), (None, None))
+
+    def test_version_only_commit_is_silent(self):
+        # Окно пользователя: коммит одного VERSION шлюз считал кодом.
+        self.write("VERSION", "1.0.1\n")
+        self.assertEqual(self.decide("git add VERSION && git commit -m release"), (None, None))
 
     def test_staged_deletion_by_path(self):
         os.remove(os.path.join(self.repo, "app.py"))
@@ -289,17 +296,22 @@ class CommitGate(GateTestCase):
                 self.assertEqual(decision, "ask")
                 self.assertIn("cannot match", text)
 
-    def test_opt_out_file_silences_the_gate(self):
+    def test_gate_is_off_without_the_switch(self):
+        # Решение пользователя 1.22.0: окно на каждый коммит без ревью - только
+        # там, где шлюз включили сознательно.
+        os.remove(os.path.join(self.repo, ".claude", ".review-gate"))
         self.write("app.py", "print(2)\n")
-        self.write(".claude/.no-review-gate", "")
         self.assertEqual(self.decide('git commit -am "fix"'), (None, None))
 
-    def test_writing_the_opt_out_file_needs_a_human(self):
-        decision, text = self.decide("touch .claude/.no-review-gate")
-        self.assertEqual(decision, "ask")
-        self.assertIn("review gate", text)
+    def test_removing_or_rewriting_the_switch_needs_a_human(self):
+        # Удалить включатель - выключить шлюз: без человека агент этого не делает.
+        for command in ("rm .claude/.review-gate", "rm -f .claude/.review-gate && git commit -am x"):
+            with self.subTest(command=command):
+                decision, text = self.decide(command)
+                self.assertEqual(decision, "ask")
+                self.assertIn("review gate", text)
         block = self.run_gate({"tool_name": "Write", "tool_input": {
-            "file_path": os.path.join(self.repo, ".claude", ".no-review-gate")}})
+            "file_path": os.path.join(self.repo, ".claude", ".review-gate")}})
         self.assertEqual(block["permissionDecision"], "ask")
 
     def test_message_value_is_not_taken_for_a_path(self):

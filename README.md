@@ -80,7 +80,7 @@ Not everything starts working the moment you install. The precise picture:
 
 | | When | What it is |
 |---|---|---|
-| **Protective hooks** | immediately | Block filesystem destruction, writes to `.env` and SQL without `WHERE`; before force-push, `reset --hard` or `DROP` they ask you in the Claude Code permission prompt, and so does a code commit that `code-reviewer` has not approved (when the team has that role); log privileged actions and stop blind retries of a failing command |
+| **Protective hooks** | immediately | Block filesystem destruction, writes to `.env` and SQL without `WHERE`; before force-push, `reset --hard` or `DROP` they ask you in the Claude Code permission prompt, and so does a code commit that `code-reviewer` has not approved (once you turn that gate on with `.claude/.review-gate`); log privileged actions and stop blind retries of a failing command |
 | **After-denial rule** | next start | When auto mode denies an action, the agent asks you through the question menu instead of telling you to run it yourself. A role hands the request to the main conversation: subagents cannot ask |
 | **Checklists as skills** | immediately | Claude pulls them in when relevant, or invoke them with `/` |
 | **Team setup prompt** | next start | It is a `SessionStart` hook: the event already fired if you installed mid-session. `/clear` is enough — no need to restart entirely — but `/reload-plugins` will not do it |

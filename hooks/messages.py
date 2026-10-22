@@ -830,9 +830,11 @@ MESSAGES = {
         "en": "CONFIRM [W/Write]: a commit the review gate cannot match against an approval. "
               "Yes - commit anyway, No - the agent stages it with a separate command.",
     },
-    "review.optout_write": {
-        "ru": "CONFIRM [W/Write]: {path} выключает шлюз ревью в этом проекте.",
-        "en": "CONFIRM [W/Write]: {path} turns off the review gate in this project.",
+    "review.switch_write": {
+        "ru": "CONFIRM [W/Write]: {path} включает шлюз ревью в этом проекте - удалить или "
+              "изменить его значит выключить проверку коммитов.",
+        "en": "CONFIRM [W/Write]: {path} turns the review gate on in this project - removing or "
+              "changing it turns commit checks off.",
     },
     "review.gate_missing_details": {
         "ru": "CONFIRM [W/Write]: git commit кода без ревью.\n\n"

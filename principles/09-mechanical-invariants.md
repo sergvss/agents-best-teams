@@ -92,7 +92,7 @@ Git деструктив:
   git restore .          → CONFIRM [W/Write]  (современная форма того же отката)
 
 Пропуск шага процесса:
-  git commit кода без одобрения ревьюера → CONFIRM [W/Write]  (если в команде есть ревьюер)
+  git commit кода без одобрения ревьюера → CONFIRM [W/Write]  (если шлюз включён)
 
 SQL деструктив:
   DELETE FROM <table>  (без WHERE)  → BLOCKED [P/Privileged]

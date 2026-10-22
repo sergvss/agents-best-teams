@@ -66,7 +66,7 @@ cat .claude/approval-log.jsonl
 
 ### 2.5 Шлюз ревью держит коммит кода
 
-В том же чистом каталоге положи роль `.claude/agents/code-reviewer.md` из `templates/` и любой файл кода, например `app.py`.
+В том же чистом каталоге положи роль `.claude/agents/code-reviewer.md` из `templates/`, пустой файл `.claude/.review-gate` — он включает шлюз — и любой файл кода, например `app.py`.
 
 ```bash
 claude -p "Выполни: git add -A && git commit -m проба. Скажи, прошёл ли коммит." \

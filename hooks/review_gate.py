@@ -68,15 +68,18 @@ MARKER = "abt-review-approve"
 # worktree свой (git rev-parse --git-path).
 APPROVALS_FILE = "abt-review-approvals.json"
 MAX_APPROVALS = 50
-# Пустой файл в проекте выключает шлюз. Запись в него - через окно: иначе агент
-# выключил бы шлюз сам.
-OPT_OUT = os.path.join(".claude", ".no-review-gate")
+# Шлюз включается файлом в проекте, по умолчанию выключен. Окно на каждый
+# коммит без ревью раздражало пользователя во всех проектах с code-reviewer,
+# а не только там, где он этого хотел (решение пользователя, 1.22.0). Удаление
+# или перезапись файла - через окно: иначе агент выключил бы шлюз сам.
+SWITCH = os.path.join(".claude", ".review-gate")
 GIT_TIMEOUT_S = 8
 
 
 # Коммит одной документации ревью не требует. *.txt сюда намеренно не входит:
 # requirements.txt — зависимости, то есть код.
-DOC_PATTERNS = ("*.md", "*.mdx", "*.rst", "*.adoc", "LICENSE", "LICENSE.*")
+# VERSION - номер выпуска, а не код: коммит одной версии давал окно (окно пользователя).
+DOC_PATTERNS = ("*.md", "*.mdx", "*.rst", "*.adoc", "LICENSE", "LICENSE.*", "VERSION")
 
 # Широта того, что уйдёт в коммит: индекс, плюс изменения отслеживаемых файлов,
 # плюс новые файлы. "unknown" — хук не может сказать, что именно уйдёт.
@@ -252,13 +255,13 @@ def is_marker(tokens):
     return basename(tokens[0]) == "echo" and len(tokens) > 1 and tokens[1] == MARKER
 
 
-def is_opt_out(target, workdir=None):
-    """True, если путь - выключатель шлюза .claude/.no-review-gate (два последних сегмента)."""
+def is_switch(target, workdir=None):
+    """True, если путь - включатель шлюза .claude/.review-gate (два последних сегмента)."""
     raw = target.strip("\"'").replace("\\", "/")
     if workdir and not is_absolute(raw):
         raw = workdir.replace("\\", "/").rstrip("/") + "/" + raw
     parts = [part.lower() for part in raw.split("/") if part and part != "."]
-    return parts[-2:] == [".claude", ".no-review-gate"]
+    return parts[-2:] == [".claude", ".review-gate"]
 
 
 def is_approvals_file(path):
@@ -603,7 +606,7 @@ def pre_bash(data):
     # Шлюз выключен без роли ревьюера, и тогда незачем разбирать git и звать
     # git config для алиасов. Защита маркера и файла одобрений действует всегда.
     root = project_root(data)
-    gated = team_has_reviewer(root) and not os.path.exists(os.path.join(root, OPT_OUT))
+    gated = os.path.exists(os.path.join(root, SWITCH)) and team_has_reviewer(root)
     git_env = GIT_ENV.search(command) is not None
     alias_defined = False
     staging = "index"
@@ -620,8 +623,8 @@ def pre_bash(data):
             # workdir в виде guard.py, а не абсолютный cwd: сессия из worktree в
             # .claude/worktrees/ иначе считала бы каждую запись записью в .claude.
             note_platform_write(target, workdir)
-            if is_opt_out(target, workdir):
-                confirm(msg("review.optout_write", path=target))
+            if is_switch(target, workdir):
+                confirm(msg("review.switch_write", path=target))
         call = git_call(tokens, cwd)
         if call is None:
             # Запись или неизвестная команда до коммита меняет то, что уйдёт
@@ -693,8 +696,8 @@ def pre_path(data):
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if data.get("tool_name") in WRITE_TOOLS and path and is_approvals_file(path):
         deny(msg("review.approvals_protected", path=path))
-    if data.get("tool_name") in WRITE_TOOLS and path and is_opt_out(path):
-        confirm(msg("review.optout_write", path=path))
+    if data.get("tool_name") in WRITE_TOOLS and path and is_switch(path):
+        confirm(msg("review.switch_write", path=path))
         emit_confirmation(data.get("permission_mode") or "")
 
 
