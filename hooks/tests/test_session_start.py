@@ -311,111 +311,21 @@ class TestProjectConfigProblems(SessionStartTestCase):
         self.assertNotIn("agents-best-teams.json", run_hook(self.cwd) or "")
 
 
-class TestVerifyReminder(SessionStartTestCase):
+class TestNoVerifyReminder(SessionStartTestCase):
     """
-    Напоминание включить verify.py, когда тесты появились (задача #6).
+    Напоминания включить verify.py нет - и не должно появиться снова.
 
-    Домашний каталог подменяется временным: иначе результат зависел бы от того,
-    включён ли verify.py в настройках человека, запустившего тесты.
+    Оно было в 1.20-1.22 по задаче #6 и раздражало: агент в каждой сессии
+    предлагал включить хук, упирался в защиту файла команд и просил человека
+    скопировать файл руками. Включить хук без человека нельзя по
+    безопасности, а подсказка, которую нельзя выполнить, - шум.
     """
 
-    def setUp(self):
-        super().setUp()
-        self._home = tempfile.TemporaryDirectory()
-        self._saved = {key: os.environ.get(key)
-                       for key in ("HOME", "USERPROFILE", "CLAUDE_PROJECT_DIR")}
-        os.environ["HOME"] = os.environ["USERPROFILE"] = self._home.name
-        # Внутри сессии Claude Code эта переменная указала бы хуку чужой проект.
-        os.environ.pop("CLAUDE_PROJECT_DIR", None)
-        self.add_role("code-reviewer")
-
-    def tearDown(self):
-        for key, value in self._saved.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-        self._home.cleanup()
-        super().tearDown()
-
-    def touch(self, *parts, content=""):
-        path = os.path.join(self.cwd, *parts)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(content)
-
-    def test_reminds_when_tests_exist_without_verify(self):
-        self.touch("tests", "test_app.py")
-        prompt = run_hook(self.cwd) or ""
-        self.assertIn("verify.py", prompt)
-        self.assertIn(".claude/.no-verify-prompt", prompt)
-
-    def test_tests_dir_on_the_second_level_counts(self):
-        # Живой прогон: в песочнице тесты в client/tests/ и server/tests/, и
-        # напоминание не срабатывало - на втором уровне искались только файлы.
-        self.touch("server", "tests", "test_app.py")
-        self.assertIn("verify.py", run_hook(self.cwd) or "")
-
-    def test_test_file_next_to_code_counts(self):
-        self.touch("src", "Button.test.tsx")
-        self.assertIn("verify.py", run_hook(self.cwd) or "")
-
-    def test_silent_without_tests(self):
-        self.touch("src", "app.py")
+    def test_tests_without_verify_produce_no_reminder(self):
+        os.makedirs(os.path.join(self.cwd, "tests"))
+        with open(os.path.join(self.cwd, "tests", "test_app.py"), "w", encoding="utf-8") as fh:
+            fh.write("")
         self.assertNotIn("verify.py", run_hook(self.cwd) or "")
-
-    def test_dependencies_do_not_count_as_tests(self):
-        self.touch("node_modules", "pkg.test.js")
-        self.assertNotIn("verify.py", run_hook(self.cwd) or "")
-
-    def test_silent_when_verify_is_configured_in_the_project(self):
-        self.touch("tests", "test_app.py")
-        self.touch(".claude", "settings.json", content='{"hooks": {"Stop": [{"hooks": '
-                   '[{"args": [".claude/hooks/verify.py", "--command", "pytest"]}]}]}}')
-        self.assertNotIn("verify.py", run_hook(self.cwd) or "")
-
-    def test_silent_when_verify_is_configured_for_the_user(self):
-        self.touch("tests", "test_app.py")
-        os.makedirs(os.path.join(self._home.name, ".claude"))
-        with open(os.path.join(self._home.name, ".claude", "settings.json"), "w",
-                  encoding="utf-8") as fh:
-            fh.write('{"hooks": {"Stop": [{"hooks": [{"args": ["verify.py"]}]}]}}')
-        self.assertNotIn("verify.py", run_hook(self.cwd) or "")
-
-    def store(self, mapping):
-        directory = os.path.join(self._home.name, ".claude", "agents-best-teams")
-        os.makedirs(directory, exist_ok=True)
-        with open(os.path.join(directory, "verify.json"), "w", encoding="utf-8") as fh:
-            json.dump(mapping, fh)
-
-    def test_silent_when_the_user_file_has_a_command(self):
-        # Путь плагина: команда в файле пользователя, хук подключён плагином.
-        self.touch("tests", "test_app.py")
-        self.store({self.cwd: "npm test"})
-        self.assertNotIn("verify.py", run_hook(self.cwd) or "")
-
-    def test_repository_file_does_not_count_as_enabled(self):
-        # Ключ в файле проекта verify.py не читает - и напоминание не должно
-        # считать хук включённым.
-        self.touch("tests", "test_app.py")
-        self.touch(".claude", "agents-best-teams.json", content='{"verify_command": "npm test"}')
-        self.assertIn("verify.py", run_hook(self.cwd) or "")
-
-    def test_reminder_names_the_user_file_and_the_project(self):
-        self.touch("tests", "test_app.py")
-        prompt = run_hook(self.cwd) or ""
-        self.assertIn("agents-best-teams/verify.json", prompt)
-        self.assertIn(os.path.basename(self.cwd).lower(), prompt.lower())
-
-    def test_own_opt_out_silences_only_this_reminder(self):
-        self.touch("tests", "test_app.py")
-        self.touch(".claude", ".no-verify-prompt")
-        self.assertNotIn("verify.py", run_hook(self.cwd) or "")
-
-    def test_team_opt_out_does_not_silence_it(self):
-        self.touch("tests", "test_app.py")
-        self.touch(".claude", ".no-team-setup-prompt")
-        self.assertIn("verify.py", run_hook(self.cwd) or "")
 
 
 if __name__ == "__main__":

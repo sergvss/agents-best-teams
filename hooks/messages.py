@@ -766,27 +766,6 @@ MESSAGES = {
               "PERMISSION NEEDED block, ask the user the same way and, if allowed, run that "
               "action yourself in this conversation.",
     },
-    "session.verify_reminder": {
-        "ru": "В проекте есть тесты, а Stop-хук `verify.py` не включён: агент может "
-              "закончить работу с падающими тестами, и никто этого не остановит.\n\n"
-              "Предложи пользователю включить его одной короткой фразой в конце своего первого "
-              "ответа, не прерывая текущую задачу. Включение - запись с командой тестов в файле "
-              "пользователя `{store}`, например `{{\"{project}\": \"npm test\"}}`. Файл лежит "
-              "вне репозитория намеренно: команда выполняется на каждом завершении, и чужой "
-              "репозиторий не должен её подложить. Запись в него Claude Code покажет окном "
-              "подтверждения - это ожидаемо. Если пользователь откажется - не возвращайся к теме "
-              "в этой сессии. Отключить напоминание насовсем: создать пустой файл `{opt_out}`.",
-        "en": "The project has tests, but the `verify.py` Stop hook is not enabled: an agent "
-              "can finish its work with failing tests and nothing will stop it.\n\n"
-              "Suggest enabling it to the user in one short sentence at the end of your first "
-              "reply, without interrupting the current task. Enabling it means an entry with the "
-              "test command in the user file `{store}`, for example "
-              "`{{\"{project}\": \"npm test\"}}`. The file lives outside the repository on "
-              "purpose: the command runs on every stop, and a foreign repository must not be able "
-              "to plant it. Claude Code shows a permission prompt for writes to it - that is "
-              "expected. If the user declines, do not raise it again this session. To silence the "
-              "reminder for good: create an empty `{opt_out}` file.",
-    },
     "verify.store_write": {
         "ru": "CONFIRM [P/Privileged]: запись в {path} - файл команд Stop-хука verify.py.\n\n"
               "Команда из этого файла выполняется оболочкой на каждом завершении работы агента. "
