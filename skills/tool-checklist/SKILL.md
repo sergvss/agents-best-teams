@@ -1,6 +1,6 @@
 ---
 name: tool-checklist
-description: Check before calling a tool - is it needed at all, is it the right one, how large is the output, what is the risk class. Use before Bash with destructive potential, before bulk edits, before database queries, and whenever a tool's output could turn out to be enormous.
+description: Use right before running a command that deletes or changes data or files in bulk - SQL DELETE, UPDATE or DROP, rm -r, find -delete, a mass sed, a migration - and before a command whose output could be huge. Not for ordinary reads or a single-file edit.
 ---
 
 # Чек-лист вызова инструмента

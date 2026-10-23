@@ -1,6 +1,6 @@
 ---
 name: implementation-path
-description: The path from task to commit - the sequence of implementation steps with a check at each one. Use when carrying out a task of Tier 2 or above, where the work must reach a verified result rather than just written code. The commit itself is a separate step, taken only when the user asks for it.
+description: Use when about to implement a feature, an endpoint, a bug fix or a refactor that touches several files or a contract (API response, database schema, UI behaviour) and has to end tested and verified - before writing the first line of code. Not for a one-line edit or a question.
 ---
 
 # Путь от задачи до коммита
