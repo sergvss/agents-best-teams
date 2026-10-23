@@ -87,6 +87,7 @@ An agent needs to know when to stop, and the knowledge has to be mechanical rath
 
 - **Three blind attempts.** After three failures of the same command with nothing changed in between, the fourth is blocked. "Blind" is the operative word: [`hooks/retry_guard.py`](../hooks/retry_guard.py) resets the counter whenever the working copy changed between attempts, because a test failing three times while the agent fixes code is exactly the loop you want.
 - **An unreachable service.** The same threshold, for a different reason: nothing changes between attempts on its own. A repeat needs a cause — the service was started, the address changed, a new key arrived.
+- **Three review rounds without convergence.** If a task still has blockers after the third review-and-fix round, the fourth is not started: the agent reports what is left and offers a choice. A rejected false finding is not a round.
 - **Never invent the data a service did not return.** This is the worst failure mode available: a gap is visible, a plausible fabricated summary is not.
 
 Authority: `principles/07-stop-rules.md`.

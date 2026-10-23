@@ -57,6 +57,28 @@ def anchor(title):
     return slug.replace(" ", "-")
 
 
+class TestSkillSize(unittest.TestCase):
+    """
+    После сжатия контекста Claude Code заново вкладывает скилл, обрезая его
+    на 20 000 символах, - хвост пропадает до конца сессии молча. У obra/superpowers
+    так одна задача потеряла лимит в пять раундов и сделала восемнадцать.
+    """
+
+    LIMIT = 20000
+
+    def test_every_skill_fits_after_compaction(self):
+        skills = os.path.join(REPO, "skills")
+        for name in sorted(os.listdir(skills)):
+            path = os.path.join(skills, name, "SKILL.md")
+            if not os.path.isfile(path):
+                continue
+            # Символы, а не байты: кириллица в UTF-8 занимает два байта
+            size = len(read(path))
+            with self.subTest(skill=name, chars=size):
+                self.assertLess(size, self.LIMIT,
+                                "вынеси длинные части в отдельные файлы рядом и читай их по шагу")
+
+
 class TestLinks(unittest.TestCase):
     def test_local_links_point_at_existing_files(self):
         for path in markdown_files():
