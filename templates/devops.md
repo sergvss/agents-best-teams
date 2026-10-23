@@ -7,7 +7,7 @@ tools: Read, Edit, Glob, Grep, Bash
 # Поля ниже — конвенция Claude Code (code.claude.com/docs/en/sub-agents).
 # Для Cursor / Codex / Cline — свои эквиваленты; смысл полей платформо-независим.
 model: <reasoning-LLM>
-permissionMode: default       # единственная роль, которая правит .env — класс P, principles/03.
+permissionMode: default       # правит релизные и инфраструктурные файлы — класс P, principles/03. .env не правит никто: запись блокирует хук
                               # Релизы и деплой идут через Bash и этим полем не гейтятся.
 maxTurns: 25                  # бюджет шагов, principles/04
 effort: high                  # цена ошибки в релизе высокая, principles/04

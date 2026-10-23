@@ -1263,6 +1263,14 @@ class TestIncompleteInstallFailsClosed(GuardTestCase):
             # На обоих языках: каталога сообщений как раз и нет.
             self.assertIn("messages.py", text)
             self.assertIn("hooks/*.py", text)
+            # Как в конфигурации - без -X utf8: русская строка обязана читаться.
+            env = dict(os.environ)
+            env.pop("PYTHONUTF8", None)
+            env.pop("PYTHONIOENCODING", None)
+            proc = subprocess.run([sys.executable, os.path.join(work, "guard.py")],
+                                  input=json.dumps(bash("ls")).encode("utf-8"),
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+            self.assertIn("рядом с guard.py нет messages.py", proc.stderr.decode("utf-8", "replace"))
         finally:
             shutil.rmtree(work, ignore_errors=True)
 

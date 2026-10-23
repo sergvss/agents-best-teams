@@ -612,7 +612,10 @@ class CommitGate(GateTestCase):
                 self.assertEqual(self.decide(command)[0], "ask")
 
     def test_silent_without_a_reviewer_role(self):
-        remove_tree(os.path.join(self.repo, ".claude"))
+        # Включатель остаётся, убирается только роль: иначе тест молчал бы из-за
+        # включателя, и мутация team_has_reviewer -> True проходила (аудит 1.26.0).
+        os.remove(os.path.join(self.repo, ".claude", "agents", "code-reviewer.md"))
+        self.assertTrue(os.path.exists(os.path.join(self.repo, ".claude", ".review-gate")))
         self.write("app.py", "print(2)\n")
         self.git("add", "app.py")
         self.assertEqual(self.decide('git commit -m "fix"'), (None, None))
@@ -638,6 +641,8 @@ class CommitGate(GateTestCase):
             with open(os.path.join(plain, ".claude", "agents", "code-reviewer.md"), "w",
                       encoding="utf-8") as fh:
                 fh.write(REVIEWER_ROLE)
+            # Шлюз включён - тест доходит до ветки «не репозиторий» (аудит 1.26.0).
+            open(os.path.join(plain, ".claude", ".review-gate"), "w").close()
             block = self.run_gate({"tool_name": "Bash", "cwd": plain,
                                    "tool_input": {"command": "git commit -m x"}})
             self.assertIsNone(block)

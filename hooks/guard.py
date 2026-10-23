@@ -38,13 +38,15 @@ except ImportError:
     # Отказ, а не падение. Код 1 хук роняет, но вызов пропускает - защита
     # снимается тихо, и об этом никто не узнаёт. Код 2 блокирует, поэтому
     # неполная установка видна с первой же команды, как и обещает install.md.
-    # Текст здесь на обоих языках: каталога сообщений как раз и нет.
-    sys.stderr.write(
-        "BLOCKED: messages.py is missing next to guard.py. "
-        "Copy every hooks/*.py file, not guard.py alone.\n"
-        "BLOCKED: рядом с guard.py нет messages.py. "
-        "Копировать нужно все файлы hooks/*.py, а не один guard.py.\n"
-    )
+    # Текст здесь на обоих языках: каталога сообщений как раз и нет. Байтами
+    # в UTF-8: конфигурация зовёт python без -X utf8, и на Windows stderr в
+    # cp1252 превращал русскую строку в мусор (аудит 1.26.0).
+    text = ("BLOCKED: messages.py is missing next to guard.py. "
+            "Copy every hooks/*.py file, not guard.py alone.\n"
+            "BLOCKED: рядом с guard.py нет messages.py. "
+            "Копировать нужно все файлы hooks/*.py, а не один guard.py.\n")
+    getattr(sys.stderr, "buffer", None) and sys.stderr.buffer.write(text.encode("utf-8")) \
+        or sys.stderr.write(text)
     sys.exit(2)
 
 # Инструменты, которые пишут в файлы. Read сюда намеренно не входит.

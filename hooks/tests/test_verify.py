@@ -26,7 +26,7 @@ PASSING = "{} -c \"import sys; sys.exit(0)\"".format(sys.executable)
 FAILING = "{} -c \"print('2 tests failed'); import sys; sys.exit(1)\"".format(sys.executable)
 
 
-def run_verify(session, command=None, cwd=REPO, extra=None, home=None):
+def run_verify(session, command=None, cwd=REPO, extra=None, home=None, project_dir=None):
     """Возвращает (код возврата, stderr)."""
     argv = [sys.executable, "-X", "utf8", VERIFY]
     if command is not None:
@@ -37,6 +37,8 @@ def run_verify(session, command=None, cwd=REPO, extra=None, home=None):
     # репозиторий, и команда читалась бы не из временного проекта.
     env = dict(os.environ)
     env.pop("CLAUDE_PROJECT_DIR", None)
+    if project_dir:
+        env["CLAUDE_PROJECT_DIR"] = project_dir
     if home:
         # Файл команд ищется в домашнем каталоге: подменяем его временным.
         env["HOME"] = env["USERPROFILE"] = home
@@ -135,6 +137,19 @@ class TestVerifyGate(unittest.TestCase):
                   encoding="utf-8") as fh:
             json.dump({os.path.join(os.path.dirname(project), "other"): FAILING}, fh)
         self.assertEqual(self.run_in(self.session("other"), project)[0], 0)
+
+    def test_command_is_found_by_project_root_and_runs_there(self):
+        # Аудит 1.26.0: тесты всегда снимали CLAUDE_PROJECT_DIR, и корень везде
+        # совпадал с cwd. Здесь сессия стоит в подкаталоге, команда записана на
+        # корень проекта - хук обязан её найти и запустить в корне.
+        marker = "import pathlib; pathlib.Path('ran-here.txt').write_text('x')"
+        project = self.project("{} -c \"{}\"".format(sys.executable, marker))
+        sub = os.path.join(project, "sub")
+        os.makedirs(sub)
+        code, err = run_verify(self.session("root"), cwd=sub, home=self.home, project_dir=project)
+        self.assertEqual(code, 0, err)
+        self.assertTrue(os.path.exists(os.path.join(project, "ran-here.txt")), "команда не запустилась в корне")
+        self.assertFalse(os.path.exists(os.path.join(sub, "ran-here.txt")))
 
     def test_argument_wins_over_the_user_file(self):
         project = self.project(FAILING)

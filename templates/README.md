@@ -8,7 +8,7 @@
 
 ## Кто делает
 
-Правят код в своей зоне. Полный набор Edit и Write не у всех: `devops` и `local-sysops` меняют только существующие файлы (без Write), `browser-tester` пишет тест-артефакты, но продуктовый код не правит (без Edit). Точная матрица — [`checklists/permission-checklist.md`](../checklists/permission-checklist.md).
+Правят код в своей зоне. Полный набор Edit и Write не у всех: `devops` и `local-sysops` меняют только существующие файлы (без Write), `browser-tester` пишет только в каталог E2E — там ему открыты и Edit, и Write, — а продуктовый код не правит; `qa-tester` — только тестовые файлы. Точная матрица — [`checklists/permission-checklist.md`](../checklists/permission-checklist.md).
 
 | Роль | Зона |
 |---|---|

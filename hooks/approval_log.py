@@ -64,9 +64,10 @@ BASH_PATTERNS = [
     # самопротиворечивость, против которой написан principles/09.
     #
     # Формы перечислены не по написанию, а по смыслу: `+ветка` — тот же force,
-    # `:ветка` и `--delete` — удаление ветки на сервере.
+    # `:ветка`, `--delete` и `-d` — удаление ветки на сервере. Короткие флаги
+    # слипаются, как в guard.py: `-fu` и `-uf` — тоже force (аудит 1.26.0).
     ("P", "git-push-destructive",
-     r"\bgit\b.*\bpush\b.*(--force(?!-with-lease)|--mirror|--delete|\s-f\b|\s\+\S|\s:\S)"),
+     r"\bgit\b.*\bpush\b.*(--force(?!-with-lease)|--mirror|--delete|\s-d\b|\s-[A-Za-z]*f[A-Za-z]*\b|\s\+\S|\s:\S)"),
     ("W", "git-push", r"\bgit\b.*\bpush\b"),
     ("W", "git-tag", r"\bgit\b.*\btag\b"),
     ("W", "git-merge", r"\bgit\b.*\b(merge|rebase|cherry-pick)\b"),

@@ -216,6 +216,10 @@ class TestJournalAgreesWithTheHook(unittest.TestCase):
     FORMS = [
         "git push --force origin main",
         "git push -f",
+        # Аудит 1.26.0: короткие флаги журнал разбирал иначе, чем guard.
+        "git push -fu origin feature",
+        "git push -uf origin feature",
+        "git push origin -d feature",
         "git push origin +main",
         "git push --mirror origin",
         "git push origin --delete feature",

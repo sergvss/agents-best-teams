@@ -62,7 +62,7 @@ Six steps from nothing to a working team. Each one is explained below — if som
 | 1 | `/plugin marketplace add sergvss/agents-best-teams` |
 | 2 | `/plugin install agents-best-teams@sergvss` |
 | 3 | `/reload-plugins` — **only if** Claude Code printed `Run /reload-plugins to activate.` Until then nothing works |
-| 4 | Hook messages are in English. For Russian: `printf 'ru\n' > .claude/.abt-lang` |
+| 4 | Hook messages are in English. For Russian: `mkdir -p .claude && printf 'ru\n' > .claude/.abt-lang` |
 | 5 | Paste into the chat: `Разверни команду агентов в этом проекте через скилл agents-best-teams:setup-agent-team` |
 | 6 | Verify: ask the agent to run `echo check > .env.check`. It must be blocked |
 
@@ -80,7 +80,7 @@ Not everything starts working the moment you install. The precise picture:
 
 | | When | What it is |
 |---|---|---|
-| **Protective hooks** | immediately | Block filesystem destruction, writes to `.env` and SQL without `WHERE`; before force-push, `reset --hard` or `DROP` they ask you in the Claude Code permission prompt, and so does a code commit that `code-reviewer` has not approved (once you turn that gate on with `.claude/.review-gate`); log privileged actions and stop blind retries of a failing command |
+| **Protective hooks** | immediately | Block filesystem destruction, writes to `.env` and SQL without `WHERE`; before force-push, `reset --hard` or `DROP` they ask you in the Claude Code permission prompt, and so does a code commit that `code-reviewer` has not approved (once the team has `code-reviewer` and you turn the gate on with an empty `.claude/.review-gate`); log privileged actions and stop blind retries of a failing command |
 | **After-denial rule** | next start | When auto mode denies an action, the agent asks you through the question menu instead of telling you to run it yourself. A role hands the request to the main conversation: subagents cannot ask |
 | **Checklists as skills** | immediately | Claude pulls them in when relevant, or invoke them with `/` |
 | **Hook diagnosis** | immediately | Ask where a permission prompt or a block came from: the `diagnose-hooks` skill reads the session transcript, cites `file:line` for every hook decision and says whether the current version would still do it |
@@ -208,6 +208,9 @@ hooks/         Working protective hooks — the Claude Code layer
                verify.py — do not finish with failing tests
                approval_log.py — privileged-action log
                retry_guard.py — the three-attempts rule
+               review_gate.py — review gate for code commits (opt-in)
+               session_start.py — start-of-session prompts
+               denial_guidance.py — what to do after a denial
                messages.py — every message, in English and Russian
                configuration and tests
 
@@ -259,7 +262,7 @@ ABT_LANG=ru claude                                    # one session
 mkdir -p .claude && printf 'ru\n' > .claude/.abt-lang # for the project
 ```
 
-English is the default. If no language is chosen, the plugin asks once at the start of a session and remembers the answer. An unrecognised value falls back to English instead of disabling anything.
+English is the default. If no language is chosen, the plugin asks at the start of each session until you choose. `setup-agent-team` asks too when it deploys a team, writes the answer to `.claude/.abt-lang` and can produce the roles themselves in your language. An unrecognised value falls back to English instead of disabling anything.
 
 **Does the rest still work for you?** Yes, and not by luck. The roles and skills are prompts the model reads, and the model is multilingual: it reads a Russian role definition and answers in the language you write in. When `setup-agent-team` deploys a team it can write the roles in your language as it adapts them to your stack — so the roles you actually work with are yours to read.
 
