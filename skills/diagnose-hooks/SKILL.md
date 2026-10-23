@@ -1,6 +1,6 @@
 ---
 name: diagnose-hooks
-description: Find out from the session transcript which agents-best-teams hook asked, blocked or warned, and why - with file:line evidence for every finding, and whether the current plugin version would still do it. Use when the user asks where a permission prompt came from, why a command was blocked, why a commit asked for review, or why the agent could not finish.
+description: Use when the user asks where a permission prompt came from, why a command or commit was blocked or asked for review, why the agent could not finish, or what an agents-best-teams hook decided in a past session.
 ---
 
 # Разбор решений хуков по транскрипту

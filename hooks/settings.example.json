@@ -61,6 +61,19 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/ledger_log.py"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
@@ -89,6 +102,19 @@
       }
     ],
     "PostToolUseFailure": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/ledger_log.py"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
       {
         "matcher": "Bash",
         "hooks": [

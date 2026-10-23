@@ -1,6 +1,6 @@
 ---
 name: planning-checklist
-description: Task decomposition before work starts - determine the Tier, split into subtasks, assign roles, set done criteria. Use when a task is larger than a single edit, when it is unclear where to begin, and always before delegating work to other agents.
+description: Use when a task is larger than a single edit, when it is unclear where to begin or how to split the work, when choosing the Tier, and always before delegating work to other agents.
 ---
 
 # Чек-лист декомпозиции задачи

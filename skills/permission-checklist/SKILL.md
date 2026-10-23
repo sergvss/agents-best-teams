@@ -1,6 +1,6 @@
 ---
 name: permission-checklist
-description: Permission matrix for an agent team - which tools, permissionMode, maxTurns, effort and memory each role is entitled to. Use when adding a new role, when reviewing an existing one, and after an incident where an agent stepped outside its area.
+description: Use when adding a new agent role or deciding which tools, permissionMode, maxTurns, effort or memory a role gets, when reviewing an existing role's rights, and after an agent stepped outside its area.
 ---
 
 # Матрица разрешений агентов

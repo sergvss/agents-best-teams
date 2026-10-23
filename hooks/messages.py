@@ -156,6 +156,16 @@ MESSAGES = {
               "proceed. If the user approved, carry on.",
     },
 
+    # -- журнал вызовов в ledger: ledger_log.py ------------------------------
+    "ledger.header": {
+        "ru": "# Журнал вызовов ролей - пишет хук ledger_log.py, не править",
+        "en": "# Role call log - written by the ledger_log.py hook, do not edit",
+    },
+    "ledger.done": {"ru": "завершено", "en": "completed"},
+    "ledger.duration": {"ru": " за {seconds} с", "en": " in {seconds} s"},
+    "ledger.failed": {"ru": "сбой", "en": "failed"},
+    "ledger.background": {"ru": "запущено в фоне", "en": "started in background"},
+
     # -- правило memory ------------------------------------------------------
     "memory.extra_ledger": {
         "ru": " и ledger задачи в .agent-ledger/",

@@ -1,6 +1,6 @@
 ---
 name: setup-agent-team
-description: Assemble an AI agent team in the current project - pick the roles, copy the templates into .claude/agents/, adapt them to the project stack and verify the result. Use when asked to set up an agent team, add a role to an existing team, or deploy the agents-best-teams methodology in a project.
+description: Use when asked to set up, assemble or deploy an AI agent team in a project, to add or adapt a role in an existing team, or to install the agents-best-teams methodology - including when .claude/agents/ has no methodology roles yet.
 ---
 
 # Сборка команды агентов под проект

@@ -1,6 +1,6 @@
 ---
 name: context-checklist
-description: Context management in an agent team - what to pass into a subtask, what to return from it, what to write to memory and what never to write. Use when handing work to another agent, when preparing a result report, and when the context is approaching its limit.
+description: Use when handing work to another agent or subagent, when deciding what to put in a task brief or a result report, when writing to agent memory, and when the context is approaching its limit.
 ---
 
 # Чек-лист управления контекстом

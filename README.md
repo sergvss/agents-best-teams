@@ -91,7 +91,7 @@ Not everything starts working the moment you install. The precise picture:
 
 **Activation comes first.** After installing, Claude Code prints either `Plugin is now active.` or `Run /reload-plugins to activate.` In the second case nothing works until you run that command.
 
-**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are sixteen of them per configuration file, and fixing one block leaves the log, the retry counter, the review gate and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
+**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are eighteen of them per configuration file, and fixing one block leaves the log, the retry counter, the review gate and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
 
 ### The roles need a separate step
 
@@ -207,6 +207,7 @@ hooks/         Working protective hooks — the Claude Code layer
                guard.py — blocks destruction before it runs
                verify.py — do not finish with failing tests
                approval_log.py — privileged-action log
+               ledger_log.py — role calls into the task ledger
                retry_guard.py — the three-attempts rule
                review_gate.py — review gate for code commits (opt-in)
                session_start.py — start-of-session prompts
