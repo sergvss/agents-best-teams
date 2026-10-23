@@ -32,7 +32,7 @@
 | [`security-reviewer`](security-reviewer.md) | Авторизация, ввод, секреты, зависимости |
 | [`design-reviewer`](design-reviewer.md) | Состояния интерфейса, вёрстка, доступность |
 | [`investigator`](investigator.md) | Диагноз багам, не принадлежащим ни одной зоне |
-| [`scope-challenger`](scope-challenger.md) | Надо ли делать это вообще — **до** декомпозиции |
+| [`scope-challenger`](scope-challenger.md) | Надо ли делать это вообще — **до** декомпозиции; вторым вызовом — план Tier 3 глазами исполнителя |
 
 ## Кто считает
 
