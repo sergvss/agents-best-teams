@@ -1,6 +1,6 @@
 ---
 name: implementation-path
-description: Use when about to implement a feature, an endpoint, a bug fix or a refactor that touches several files or a contract (API response, database schema, UI behaviour) and has to end tested and verified - before writing the first line of code. Not for a one-line edit or a question.
+description: Use when asked to add, implement, fix or change functionality across several files or a contract (an API endpoint, a database schema, UI behaviour, docs and tests together), especially when the result has to be tested and verified - before writing the first line of code. Not for a one-line edit or a question.
 ---
 
 # Путь от задачи до коммита
