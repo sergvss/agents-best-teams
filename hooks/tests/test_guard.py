@@ -386,6 +386,26 @@ class TestAgentMemory(GuardTestCase):
                 self.assertAllowed(edit(path, "Write", agent))
                 self.assertAllowed(edit(path, "Edit", agent))
 
+    def test_orchestrator_writes_its_task_ledger(self):
+        # Ledger длинной задачи живёт в .agent-ledger/: оркестратор ведёт его сам,
+        # остальной проект для него по-прежнему закрыт - и редактором, и оболочкой.
+        for payload in (edit(".agent-ledger/best-field.md", "Write", "pm-orchestrator"),
+                        edit("C:/proj/.agent-ledger/best-field.md", "Edit", "pm-orchestrator"),
+                        bash("echo '- [x] dev-backend' >> .agent-ledger/best-field.md", "pm-orchestrator"),
+                        bash("rm .agent-ledger/best-field.md", "pm-orchestrator")):
+            with self.subTest(payload=payload["tool_input"]):
+                self.assertAllowed(payload)
+        for payload in (edit("ledger/x.md", "Write", "pm-orchestrator"),
+                        edit(".claude/settings.json", "Write", "pm-orchestrator"),
+                        edit("docs/.agent-ledger.md", "Write", "pm-orchestrator"),
+                        edit(".agent-ledger", "Write", "pm-orchestrator"),
+                        # Триангуляция 1.27.0: `..` снимается до проверки зоны
+                        edit(".agent-ledger/../src/app.py", "Write", "pm-orchestrator"),
+                        bash("echo x > .agent-ledger/../src/app.py", "pm-orchestrator"),
+                        edit(".agent-ledger/x.md", "Write", "code-reviewer")):
+            with self.subTest(payload=payload["tool_input"]):
+                self.assertBlocked(payload)
+
     def test_local_memory_variant_is_recognised(self):
         # principles/06 перечисляет `memory: local` с путём
         # `.claude/agent-memory-local/`, а хук знал только `agent-memory` —

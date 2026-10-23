@@ -302,6 +302,21 @@ def is_switch(target, workdir=None):
     return parts[-2:] == [".claude", ".review-gate"]
 
 
+def switch_exists(target, cwd):
+    """
+    True, если включатель по этому пути уже есть.
+
+    Записать включатель, которого нет, - только включить шлюз: проверка
+    становится строже, и окно на это не нужно. Живой случай 1.27.0: агент при
+    настройке включал шлюз по просьбе пользователя, в bypassPermissions окно
+    не работает, хук отказал - и включить шлюз пришлось руками в терминале.
+    Выключение - удаление или перезапись существующего - по-прежнему через окно.
+    """
+    raw = native(target.strip("\"'"))
+    path = raw if os.path.isabs(raw) else os.path.join(native(cwd), raw)
+    return os.path.exists(path)
+
+
 def is_approvals_file(path):
     return path_basename(path.strip("\"'")) == APPROVALS_FILE
 
@@ -661,7 +676,7 @@ def pre_bash(data):
             # workdir в виде guard.py, а не абсолютный cwd: сессия из worktree в
             # .claude/worktrees/ иначе считала бы каждую запись записью в .claude.
             note_platform_write(target, workdir)
-            if is_switch(target, workdir):
+            if is_switch(target, workdir) and switch_exists(target, cwd):
                 confirm(msg("review.switch_write", path=target))
         call = git_call(tokens, cwd)
         if call is None:
@@ -734,7 +749,8 @@ def pre_path(data):
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if data.get("tool_name") in WRITE_TOOLS and path and is_approvals_file(path):
         deny(msg("review.approvals_protected", path=path))
-    if data.get("tool_name") in WRITE_TOOLS and path and is_switch(path):
+    if data.get("tool_name") in WRITE_TOOLS and path and is_switch(path) and \
+            switch_exists(path, data.get("cwd") or os.getcwd()):
         confirm(msg("review.switch_write", path=path))
         emit_confirmation(data.get("permission_mode") or "")
 

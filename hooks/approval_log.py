@@ -34,6 +34,7 @@ import time
 
 # Тексты для человека — в каталоге сообщений, см. messages.py.
 from messages import msg, use_project
+from guard import basename, split_segments, strip_heredoc_bodies, strip_wrappers
 
 DEFAULT_LOG = os.path.join(".claude", "approval-log.jsonl")
 
@@ -81,6 +82,31 @@ BASH_PATTERNS = [
     ("P", "secret-read", r"\b(cat|less|more|head|tail|type)\b[^|;&]*\.env\b"),
 ]
 
+# Команды, которые только ищут и печатают текст. Слова в их аргументах - образцы
+# поиска и пути, а не действия: `grep -v alembic` не миграция, `grep "git push"` -
+# не push. Без этого списка журнал метил такие команды в пяти проектах (1.27.0).
+# find, xargs и awk сюда не входят: через -exec, xargs и system() они запускают
+# другие команды. sed остаётся, хотя у GNU sed есть команда e: она редкость,
+# а `sed -n` по файлу с alembic в пути - самый частый источник ложных записей.
+TEXT_TOOLS = {"grep", "egrep", "fgrep", "rg", "ls", "echo", "printf", "sed",
+              "wc", "sort", "uniq", "cut", "tr", "diff"}
+
+
+def action_segments(command):
+    """
+    Сегменты команды, которые что-то делают, - строками.
+
+    Разбор тот же, что в guard.py: тела heredoc - данные, их не выполнят;
+    обёртки вроде sudo и env снимаются; сегменты TEXT_TOOLS пропускаются.
+    """
+    segments = []
+    for tokens in split_segments(strip_heredoc_bodies(command)):
+        tokens = strip_wrappers(tokens)
+        if tokens and basename(tokens[0]) not in TEXT_TOOLS:
+            segments.append(" ".join(tokens))
+    return segments
+
+
 # .claude/agents-best-teams.json - настройки защиты: правка расширяет зоны ролей,
 # и хук открывает на неё окно подтверждения. Что хук останавливает, то журнал пишет.
 SENSITIVE_PATH = re.compile(
@@ -93,11 +119,15 @@ def classify(data):
     payload = data.get("tool_input") or {}
 
     if tool == "Bash":
-        command = re.sub(r"\s+", " ", (payload.get("command") or "")).strip()
+        raw = payload.get("command") or ""
+        command = re.sub(r"\s+", " ", raw).strip()
         if not command:
             return None
+        segments = action_segments(raw)
+        # Шаблоны снаружи, сегменты внутри: порядок шаблонов задаёт приоритет,
+        # и `git push && git push --force` пишется классом P, а не W.
         for risk, what, pattern in BASH_PATTERNS:
-            if re.search(pattern, command, re.I):
+            if any(re.search(pattern, segment, re.I) for segment in segments):
                 return risk, what, command[:300]
         return None
 
@@ -124,10 +154,13 @@ def main():
         return 0
     risk, what, detail = verdict
 
+    # Корень проекта, а не текущий каталог: после `cd .claude/agents` журнал
+    # появлялся в .claude/agents/.claude/. Порядок тот же, что в guard.py.
+    project = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or os.getcwd()
     log_path = os.environ.get("AGENTS_APPROVAL_LOG") or DEFAULT_LOG
     if not os.path.isabs(log_path):
-        log_path = os.path.join(data.get("cwd") or os.getcwd(), log_path)
-    use_project(data.get("cwd") or "")
+        log_path = os.path.join(project, log_path)
+    use_project(project)
 
     entry = {
         "at": time.strftime("%Y-%m-%dT%H:%M:%S"),

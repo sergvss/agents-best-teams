@@ -17,11 +17,17 @@ import unittest
 HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "approval_log.py")
 
 
-def run_hook(payload, cwd):
+def run_hook(payload, cwd, project_dir=None):
+    # Тесты могут идти внутри сессии Claude Code: её CLAUDE_PROJECT_DIR
+    # увёл бы записи в настоящий журнал репозитория.
+    env = dict(os.environ)
+    env.pop("CLAUDE_PROJECT_DIR", None)
+    if project_dir:
+        env["CLAUDE_PROJECT_DIR"] = project_dir
     proc = subprocess.run(
         [sys.executable, "-X", "utf8", HOOK],
         input=json.dumps(payload).encode("utf-8"),
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env,
     )
     return proc
 
@@ -196,6 +202,55 @@ class TestFailedActionsAreRecordedToo(ApprovalLogTestCase):
         # всё подряд, читать никто не станет.
         found = self.log("Bash", {"command": "ls -la"}, event="PostToolUseFailure")
         self.assertEqual(found, [])
+
+
+class TestWordsInTextAreNotActions(ApprovalLogTestCase):
+    """
+    Журнал судит о действии по команде, а не по словам где-то в её тексте.
+
+    Живые записи 1.26: `grep -v alembic` - как db-migration, `grep "git push"` -
+    как git-push, правка роли через python-heredoc со словом Alembic в тексте -
+    как миграция.
+    """
+
+    def test_search_patterns_paths_and_heredoc_bodies_are_not_logged(self):
+        for command in [
+            'grep -rn "ImageScanResult" . | grep -v "venv\\|alembic"',
+            "ls migrations alembic 2>/dev/null | head",
+            'grep -n "git push\\|Alembic" principles/08-approval-log.md',
+            "echo 'alembic upgrade head'",
+            "python -X utf8 - <<'EOF'\nt = 'Alembic, flyway, git push --force'\nEOF",
+            "git diff --name-only a b | grep -E '^(alembic/versions|requirements)'",
+        ]:
+            with self.subTest(command=command):
+                self.assertEqual(self.log("Bash", {"command": command}), [])
+
+    def test_real_actions_are_still_logged_after_cd_and_wrappers(self):
+        for command, risk, what in [
+            ("cd backend && alembic upgrade head", "W", "db-migration"),
+            ("sudo -u app psql -c 'DELETE FROM runs'", "P", "db-write"),
+            ("docker exec db psql -c 'DROP TABLE runs'", "P", "db-write"),
+            ("bash -c 'git push --force origin main'", "P", "git-push-destructive"),
+            ("git push origin main && git push --force origin dev", "P", "git-push-destructive"),
+            ("cat .env | grep KEY", "P", "secret-read"),
+        ]:
+            with self.subTest(command=command):
+                found = self.log("Bash", {"command": command})
+                self.assertEqual((found[-1]["risk"], found[-1]["what"]), (risk, what))
+
+
+class TestLogLivesAtProjectRoot(ApprovalLogTestCase):
+    def test_log_goes_to_project_root_when_cwd_is_a_subfolder(self):
+        # Агент сделал cd .claude/agents - журнал всё равно в корне проекта
+        sub = os.path.join(self.cwd, ".claude", "agents")
+        os.makedirs(sub)
+        data = {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                "tool_input": {"command": "git push origin main"}, "cwd": sub,
+                "session_id": "abcdef1234"}
+        proc = run_hook(data, sub, project_dir=self.cwd)
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(len(entries(self.cwd)), 1)
+        self.assertFalse(os.path.exists(os.path.join(sub, ".claude")))
 
 
 class TestJournalAgreesWithTheHook(unittest.TestCase):

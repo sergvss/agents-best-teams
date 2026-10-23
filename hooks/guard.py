@@ -242,9 +242,25 @@ def in_qa_tester_zone(path):
 
 
 # Роли, у которых помимо папки памяти есть своя зона записи по путям.
+def in_ledger(path):
+    """
+    True, если путь в каталоге ledger: .agent-ledger/<задача>.md.
+
+    Ledger - рабочий файл длинной задачи: что поручено, что готово, какие решения
+    приняты. Он переживает сжатие контекста и обрыв сессии, и продолжающий не
+    запускает заново уже сделанное (идея - из obra/superpowers). Отдельный
+    каталог, а не папка памяти: память - долгие уроки и часто едет в коммиты,
+    ledger живёт до конца задачи. Не внутри .claude/: Claude Code считает его
+    чувствительным и спрашивает разрешение на каждую запись, даже в acceptEdits.
+    """
+    parts = [part.lower() for part in path.split("/")]
+    return ".agent-ledger" in parts[:-1]
+
+
 ROLE_WRITE_ZONES = {
     "browser-tester": in_browser_tester_zone,
     "qa-tester": in_qa_tester_zone,
+    "pm-orchestrator": in_ledger,
 }
 
 
@@ -413,6 +429,8 @@ def role_zone_hint(agent):
     """Хвост строки «Разрешено: ...» в блокировке - описание зоны роли."""
     if agent == "browser-tester":
         return msg("memory.extra_browser_tester")
+    if agent == "pm-orchestrator":
+        return msg("memory.extra_ledger")
     if agent == "qa-tester":
         return msg("memory.extra_qa_tester",
                    segments=", ".join(QA_TESTER_WRITE_SEGMENTS),

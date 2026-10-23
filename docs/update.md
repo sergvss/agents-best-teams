@@ -162,6 +162,14 @@ mkdir -p .claude && printf 'ru\n' > .claude/.abt-lang
 
 ---
 
+## Обновились до 1.27 — что перенести в проект
+
+- **`agents.config`**: новые SIDE-модели по замеру 23 октября — `[side_a] model = "openai/gpt-6-luna-pro"`, `[side_b] model = "google/gemini-4-argon"`; `max_tokens = 32000` и `timeout_s = 180` в обеих секциях; `# models_reviewed: 2026-10-23`. Обоснование — `docs/models.md`, «Замер 23 октября 2026».
+- **`pm-orchestrator`**: новый раздел «Ledger длинной задачи» перед «Правилом якоря», `maxTurns: 50`, бюджет делегаций Tier 2=6, Tier 3=20. В `.gitignore` проекта — строка `.agent-ledger/`.
+- **`dev-database`, `dev-frontend`, `dev-backend`**: если инварианты переносились из шаблона дословно, прогоните проверку из `setup-agent-team`, шаг 4 — в песочнице она нашла 19 строк про Alembic, JWT и dev-сервер в проекте без них.
+
+---
+
 ## После обновления — проверить
 
 Обновление хуков меняет то, что блокируется. Прогоните хотя бы второй уровень из [verification.md](verification.md): пять минут, и вы знаете, что защита действительно работает, а не просто лежит на диске.

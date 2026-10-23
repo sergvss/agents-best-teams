@@ -157,6 +157,10 @@ MESSAGES = {
     },
 
     # -- правило memory ------------------------------------------------------
+    "memory.extra_ledger": {
+        "ru": " и ledger задачи в .agent-ledger/",
+        "en": " and the task ledger in .agent-ledger/",
+    },
     "memory.extra_browser_tester": {
         "ru": " и каталог E2E целиком",
         "en": " and the whole E2E directory",

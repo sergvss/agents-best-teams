@@ -26,7 +26,7 @@ vendor       = "anthropic"          # ВАЖНО: задаётся явно дл
                                     # openai | google | anthropic | xai | mistral | ...
                                     # Даже если модель управляется IDE, vendor нужен для правила
                                     # PRIMARY.vendor ≠ SIDE-A.vendor ≠ SIDE-B.vendor.
-model        = "claude-opus-5"      # подсказка, для отчётов; фактически модель управляется платформой
+model        = "claude-opus-5-5"    # подсказка, для отчётов; фактически модель управляется платформой
 memory_dir   = ".claude/agent-memory"   # путь к persistent memory; для Cursor — ".cursor/agent-memory" и т.п.
 
 # ------------------------------------------------------------
@@ -59,7 +59,9 @@ memory_dir   = ".claude/agent-memory"   # путь к persistent memory; для 
 #
 # НО ПОРОГ — ФИЛЬТР, А НЕ ВЕРДИКТ. Из прошедших порог выбирай по замеру на
 # своих известных дефектах. В сентябре 2026 та самая flash-модель (coding 76.1)
-# на трёх реальных дефектах нашла один и пропустила даже явный. Как мерить —
+# на трёх реальных дефектах нашла один и пропустила даже явный. В октябре
+# три модели Google из трёх сочли обход защиты через симлинк «приемлемым
+# компромиссом», а не блокером. Как мерить —
 # docs/models.md, раздел «Замер на своих дефектах».
 #
 # Подробности и обоснование — principles/04-orchestration-budgets.md,
@@ -68,19 +70,20 @@ memory_dir   = ".claude/agent-memory"   # путь к persistent memory; для 
 [side_a]
 vendor       = "openai"              # openai | google | anthropic | xai | mistral | ...
 gateway      = "openrouter"          # openrouter | openai | google | anthropic | direct
-model        = "openai/gpt-5.6-luna-pro"  # 3 из 3 на замере известных дефектов (13.09.2026),
-                                         # $0.20/$1.20 за M токенов. coding_index не сверен —
-                                         # сверь в каталоге до точек высокого риска (порог 77).
-                                         # Равный результат на том же замере: openai/gpt-5.6-sol,
-                                         # coding 77.4, $2/$10 — если нужен проверенный порог 77.
+model        = "openai/gpt-6-luna-pro"  # 4 из 4 на замере известных дефектов (23.10.2026),
+                                       # $0.10/$0.50 за M токенов. coding_index не сверен —
+                                       # сверь в каталоге до точек высокого риска (порог 77).
+                                       # Тот же результат: openai/gpt-6.1-sol ($2/$10) и
+                                       # прежняя openai/gpt-5.6-luna-pro ($0.20/$1.20).
 effort       = "high"                # low | medium | high | xhigh | max — вторая ручка цены наравне с моделью.
                                      # Значение здесь — дефолт для Tier-3. На Tier-2 агент вправе
                                      # опустить до "medium": принцип — экономить effort'ом, а не
                                      # моделью ниже порога. Таблица по типам прогона — principles/04.
 api_key_env  = "OPENROUTER_API_KEY"
 base_url     = "https://openrouter.ai/api/v1"
-max_tokens   = 6000
-timeout_s    = 90
+max_tokens   = 32000                 # у reasoning-моделей сюда входит и скрытое рассуждение:
+                                     # при 6000 и 16000 ответ обрывался, видимого текста ~3 КБ
+timeout_s    = 180
 
 # ------------------------------------------------------------
 # [side_b] — второй внешний ревьюер
@@ -90,48 +93,47 @@ timeout_s    = 90
 [side_b]
 vendor       = "google"
 gateway      = "openrouter"
-model        = "google/gemini-3.1-pro-preview"  # 3 из 3 на замере известных дефектов (13.09.2026),
-                                                # $2/$12 за M токенов. Ветка preview: может пропасть
-                                                # из каталога. Тогда ревью не состоится и коммит не
-                                                # пройдёт — отказ закрытый, но замену держи наготове.
-                                                # Короткого слага google/gemini-3.1-pro в каталоге нет.
-                                                # Прежняя рекомендация google/gemini-3.7-flash
-                                                # (coding 76.1) на том же замере нашла 1 из 3.
+model        = "google/gemini-4-argon"  # лучшая из Google на замере 23.10.2026: нашла все
+                                       # четыре дефекта, тонкий — полностью; обход через
+                                       # симлинк отнесла к замечаниям, а не к блокерам.
+                                       # $2/$10 за M токенов, не preview. Прежняя
+                                       # google/gemini-3.1-pro-preview ($2/$12) тонкий нашла
+                                       # наполовину: чтение .env через head/tail сочла безопасным.
 effort       = "high"
 api_key_env  = "OPENROUTER_API_KEY"
 base_url     = "https://openrouter.ai/api/v1"
-max_tokens   = 6000
-timeout_s    = 90
+max_tokens   = 32000
+timeout_s    = 180
 
 # ------------------------------------------------------------
 # Альтернативные составы тройки — раскомментируй для смены конфигурации
 # ------------------------------------------------------------
 # Дата последней сверки с каталогом моделей. Читается CI, который
 # предупреждает, когда она старше трёх месяцев. Обнови при переоценке.
-# models_reviewed: 2026-09-15
+# models_reviewed: 2026-10-23
 #
 # Значения coding_index — на 25 августа 2026; слаги и цены сверены с каталогом
-# 15 сентября 2026. Переоценивай раз в квартал: каталог протухает, правило
+# 23 октября 2026. Переоценивай раз в квартал: каталог протухает, правило
 # порога — нет.
 #
 # Дефолтная тройка (PRIMARY = Claude в Claude Code):
-#   PRIMARY = anthropic (claude-opus-5 платформой, coding 78.0)
-#   SIDE-A  = openai    (openai/gpt-5.6-luna-pro, замер 3 из 3)
-#   SIDE-B  = google    (google/gemini-3.1-pro-preview, замер 3 из 3)
+#   PRIMARY = anthropic (claude-opus-5-5 платформой)
+#   SIDE-A  = openai    (openai/gpt-6-luna-pro, замер 4 из 4)
+#   SIDE-B  = google    (google/gemini-4-argon, замер 4 из 4, симлинк — замечанием)
 #
 # Если PRIMARY = GPT (Codex/Copilot Workspace):
-#   SIDE-A = anthropic  (anthropic/claude-opus-5, coding 78.0)
-#   SIDE-B = google     (google/gemini-3.1-pro-preview, замер 3 из 3)
+#   SIDE-A = anthropic  (anthropic/claude-opus-5.5, на дефектах не замерялась)
+#   SIDE-B = google     (google/gemini-4-argon)
 #
 # Если PRIMARY = Gemini (Cursor/Cline с Gemini):
-#   SIDE-A = anthropic  (anthropic/claude-opus-5, coding 78.0)
-#   SIDE-B = openai     (openai/gpt-5.6-luna-pro, замер 3 из 3)
+#   SIDE-A = anthropic  (anthropic/claude-opus-5.5, на дефектах не замерялась)
+#   SIDE-B = openai     (openai/gpt-6-luna-pro)
 #
 # Бюджетный режим (частые Tier-2 на стабильной кодовой базе):
-#   Дефолтный SIDE-A уже самый дешёвый из прошедших замер: openai/gpt-5.6-luna-pro,
-#   $0.20/$1.20. Дешевле этого экономия покупается качеством: на том же замере
-#   google/gemini-3.8-flash ($0.75/$3.75) и openai/gpt-5.1-codex-mini ($0.25/$2)
-#   пропустили по одному дефекту из трёх, google/gemini-3.7-flash — два.
+#   Дефолтный SIDE-A уже самый дешёвый из прошедших замер: openai/gpt-6-luna-pro,
+#   $0.10/$0.50. Дешевле не бывает и среди прочих: openai/gpt-6-luna стоит столько
+#   же, но на замере 23.10 тонкий дефект нашла наполовину; google/gemini-3.8-flash
+#   ($0.825/$4.125) — тоже наполовину, а в сентябре пропустила его целиком.
 #   Экономить правильнее через effort = "medium" и side_b_on_tier2 = false,
 #   а не через модель, провалившую замер.
 #   ⚠ Меняя модель, меняй и vendor — правило независимости проверяется по нему.

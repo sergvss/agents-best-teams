@@ -367,9 +367,24 @@ class CommitGate(GateTestCase):
         self.write("app.py", "print(2)\n")
         self.assertEqual(self.decide('git commit -am "fix"'), (None, None))
 
+    def test_creating_a_missing_switch_is_silent(self):
+        # Живой случай 1.27.0: в bypassPermissions окно не работает, и агент не мог
+        # включить шлюз по просьбе пользователя. Включить - только ужесточить проверку.
+        os.remove(os.path.join(self.repo, ".claude", ".review-gate"))
+        for command in ("touch .claude/.review-gate", ": > .claude/.review-gate",
+                        "cd .claude && touch .review-gate"):
+            with self.subTest(command=command):
+                self.assertEqual(self.decide(command), (None, None))
+        for mode in ("default", "bypassPermissions"):
+            with self.subTest(mode=mode):
+                self.assertIsNone(self.run_gate({"tool_name": "Write", "permission_mode": mode, "tool_input": {
+                    "file_path": os.path.join(self.repo, ".claude", ".review-gate"), "content": ""}}))
+
     def test_removing_or_rewriting_the_switch_needs_a_human(self):
         # Удалить включатель - выключить шлюз: без человека агент этого не делает.
-        for command in ("rm .claude/.review-gate", "rm -f .claude/.review-gate && git commit -am x"):
+        # Триангуляция 1.27.0: существование проверяется в каталоге после cd
+        for command in ("rm .claude/.review-gate", "rm -f .claude/.review-gate && git commit -am x",
+                        "cd .claude && rm .review-gate", "cd .claude && echo off > .review-gate"):
             with self.subTest(command=command):
                 decision, text = self.decide(command)
                 self.assertEqual(decision, "ask")

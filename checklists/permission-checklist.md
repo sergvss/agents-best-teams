@@ -62,7 +62,7 @@
 
 | Агент | permissionMode | maxTurns | effort | memory |
 |---|---|---|---|---|
-| pm-orchestrator | default | 30 | high | project + хук |
+| pm-orchestrator | default | 50 | high | project + хук |
 | code-reviewer | default | 20 | high | project + хук |
 | dev-backend | acceptEdits | 30 | medium | project |
 | dev-frontend | acceptEdits | 30 | medium | project |
