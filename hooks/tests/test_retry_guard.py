@@ -154,6 +154,20 @@ class TestNormalWorkIsNotBlocked(RetryGuardTestCase):
         for _ in range(5):
             self.assertIsNone(self.call("git status"))
 
+    def test_counting_is_wired_to_the_failure_event_in_both_configs(self):
+        # Аудит 1.33.0: тест выше ничего не проверяет, а перенос --record на другое
+        # событие в обеих конфигурациях разом не заметил бы ни один тест
+        hooks_dir = os.path.dirname(HOOK)
+        for name in ("hooks.json", "settings.example.json"):
+            with open(os.path.join(hooks_dir, name), encoding="utf-8") as fh:
+                config = json.load(fh)["hooks"]
+            for event, record in (("PostToolUseFailure", True), ("PreToolUse", False)):
+                with self.subTest(config=name, event=event):
+                    found = [h for e in config[event] for h in e["hooks"]
+                             if any("retry_guard.py" in a for a in h.get("args", []))]
+                    self.assertEqual(len(found), 1)
+                    self.assertEqual("--record" in found[0]["args"], record)
+
     def test_non_bash_tools_are_ignored(self):
         payload = {"tool_name": "Edit", "tool_input": {"file_path": "a.py"},
                    "session_id": self.session, "cwd": self.cwd}
@@ -236,6 +250,20 @@ class TestProjectWithoutGit(unittest.TestCase):
                 fh.write("# правка {}\n".format(attempt))
         self.assertIsNone(self.call(cmd),
                           "агент правил файл между попытками - это не слепой повтор")
+
+    def test_same_length_edit_resets_the_counter(self):
+        # Аудит 1.33.0: дописывание всегда меняет размер, и удаление st_mtime_ns из
+        # отпечатка тест выше не заметил бы. Правка той же длины меняет только время.
+        cmd = "pytest -q"
+        path = os.path.join(self.cwd, "app.py")
+        stamp = 1700000000 * 10 ** 9
+        for attempt in range(3):
+            self.call(cmd, record=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("version {}\n".format(attempt))
+            stamp += 10 ** 9
+            os.utime(path, ns=(stamp, stamp))
+        self.assertIsNone(self.call(cmd), "правка той же длины - тоже правка")
 
     def test_a_new_file_also_resets_the_counter(self):
         cmd = "pytest -q"

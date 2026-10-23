@@ -113,7 +113,7 @@
 **Другие платформы и ручная установка** — [docs/install.md](docs/install.md).
 **Первый запуск шаг за шагом** — [docs/quick-start.md](docs/quick-start.md).
 **Настройка моделей для триангуляции** — [docs/models.md](docs/models.md).
-**Субагенты, agent teams и workflows: что выбрать** — [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).
+**Субагенты, agent teams, workflows и скиллы: что выбрать** — [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).
 **Как проверить, что всё это работает** — [docs/verification.md](docs/verification.md).
 
 > **Про название.** «Команда агентов» здесь — способ организации работы: роли, зоны, маршрутизация. В Claude Code есть функция с похожим именем, **agent teams**, и это другое: один из четырёх механизмов запуска. Роли из `templates/` работают со всеми, но часть полей у тиммейтов не применяется — разбор в [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).

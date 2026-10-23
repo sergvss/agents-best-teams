@@ -80,7 +80,7 @@ Not everything starts working the moment you install. The precise picture:
 
 | | When | What it is |
 |---|---|---|
-| **Protective hooks** | immediately | Block filesystem destruction, writes to `.env` and SQL without `WHERE`; before force-push, `reset --hard` or `DROP` they ask you in the Claude Code permission prompt, and so does a code commit that `code-reviewer` has not approved (once the team has `code-reviewer` and you turn the gate on with an empty `.claude/.review-gate`); log privileged actions and stop blind retries of a failing command |
+| **Protective hooks** | immediately | Block filesystem destruction, writes to `.env` and SQL without `WHERE` in database clients (`psql`, `mysql`, `sqlite3` and others); before force-push, `reset --hard` or `DROP` they ask you in the Claude Code permission prompt, and so does a code commit that `code-reviewer` has not approved (once the team has `code-reviewer` and you turn the gate on with an empty `.claude/.review-gate`); log privileged actions and stop blind retries of a failing command |
 | **After-denial rule** | next start | When auto mode denies an action, the agent asks you through the question menu instead of telling you to run it yourself. A role hands the request to the main conversation: subagents cannot ask |
 | **Checklists as skills** | immediately | Claude pulls them in when relevant, or invoke them with `/` |
 | **Hook diagnosis** | immediately | Ask where a permission prompt or a block came from: the `diagnose-hooks` skill reads the session transcript, cites `file:line` for every hook decision and says whether the current version would still do it |
@@ -113,7 +113,7 @@ The skill reads your stack, proposes a roster, copies the templates and adapts t
 **The concepts you will meet — Tier, risk classes, 2-of-3, agent memory** — [docs/concepts.en.md](docs/concepts.en.md).
 **Other platforms and manual installation** — [docs/install.md](docs/install.md).
 **First run, step by step** — [docs/quick-start.md](docs/quick-start.md).
-**Subagents, agent teams, workflows and worktrees: which to pick** — [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).
+**Subagents, agent teams, workflows and skills: which to pick** — [docs/claude-code-mechanisms.md](docs/claude-code-mechanisms.md).
 **How to check that all of this actually works** — [docs/verification.md](docs/verification.md).
 
 > **About the name.** "Agent team" here means a way of organising work: roles, areas, routing. Claude Code has a feature with a similar name, **agent teams**, and it is a different thing — one of four execution mechanisms. The `templates/` roles work with all of them, but some frontmatter fields are ignored for teammates.

@@ -1133,6 +1133,24 @@ class TestMessageCatalogue(unittest.TestCase):
             reason = json.loads(proc.stdout.decode("utf-8"))["hookSpecificOutput"]["permissionDecisionReason"]
             self.assertIn("Причина блокировки", reason)
 
+    def test_language_file_is_found_at_project_root_after_cd(self):
+        # Аудит 1.33.0: агент сделал cd в подкаталог - файл языка всё равно в корне
+        with tempfile.TemporaryDirectory() as project:
+            os.makedirs(os.path.join(project, ".claude"))
+            os.makedirs(os.path.join(project, "server"))
+            with open(os.path.join(project, ".claude", ".abt-lang"), "w", encoding="utf-8") as fh:
+                fh.write("ru\n")
+            payload = dict(bash("rm -rf /"), cwd=os.path.join(project, "server"))
+            env = {k: v for k, v in os.environ.items() if k != "ABT_LANG"}
+            env["CLAUDE_PROJECT_DIR"] = project
+            proc = subprocess.run(
+                [sys.executable, "-X", "utf8", GUARD],
+                input=json.dumps(payload).encode("utf-8"),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+            )
+            reason = json.loads(proc.stdout.decode("utf-8"))["hookSpecificOutput"]["permissionDecisionReason"]
+            self.assertIn("Причина блокировки", reason)
+
     def test_no_user_facing_text_left_in_hook_code(self):
         """
         Ни одной строки для человека вне каталога.

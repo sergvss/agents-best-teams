@@ -751,6 +751,9 @@ def pre_path(data):
         deny(msg("review.approvals_protected", path=path))
     if data.get("tool_name") in WRITE_TOOLS and path and is_switch(path) and \
             switch_exists(path, data.get("cwd") or os.getcwd()):
+        # Запись в .claude/: в bypassPermissions окно на неё Claude Code одобряет сам,
+        # и emit_confirmation по этой пометке отвечает отказом (аудит 1.33.0)
+        note_platform_write(path)
         confirm(msg("review.switch_write", path=path))
         emit_confirmation(data.get("permission_mode") or "")
 

@@ -392,6 +392,13 @@ class CommitGate(GateTestCase):
         block = self.run_gate({"tool_name": "Write", "tool_input": {
             "file_path": os.path.join(self.repo, ".claude", ".review-gate")}})
         self.assertEqual(block["permissionDecision"], "ask")
+        # Аудит 1.33.0: в bypass окно на запись в .claude/ Claude Code одобряет сам -
+        # перезапись включателя обязана получить отказ, как rm в том же режиме
+        for tool in ("Write", "Edit"):
+            with self.subTest(tool=tool):
+                block = self.run_gate({"tool_name": tool, "permission_mode": "bypassPermissions",
+                                       "tool_input": {"file_path": os.path.join(self.repo, ".claude", ".review-gate")}})
+                self.assertEqual(block["permissionDecision"], "deny")
 
     def test_message_value_is_not_taken_for_a_path(self):
         # Значение -m и слипшихся ключей - не путь: иначе каждый коммит стал бы

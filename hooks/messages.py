@@ -32,9 +32,14 @@ _lang_cache = None
 
 
 def use_project(cwd):
-    """Запоминает каталог проекта: язык может быть задан файлом внутри него."""
+    """
+    Запоминает каталог проекта: язык может быть задан файлом внутри него.
+
+    Корень проекта из CLAUDE_PROJECT_DIR важнее cwd из payload: после cd в
+    подкаталог cwd указывает туда, и .claude/.abt-lang не находился (аудит 1.33.0).
+    """
     global _project_dir, _lang_cache
-    _project_dir = cwd or ""
+    _project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd or ""
     _lang_cache = None
 
 
