@@ -78,6 +78,18 @@ class TestFakeAuthority(unittest.TestCase):
                         self.assertIn(word, text)
 
 
+class TestProcessSkills(unittest.TestCase):
+    def test_process_skills_are_named_in_every_context(self):
+        # Живой прогон 1.35.0: на простом баге модель не открыла ни test-first, ни
+        # debug-root-cause. Строка с именами - лёгкая замена правила «1%» superpowers
+        for event, source in (("SessionStart", "startup"), ("SubagentStart", None)):
+            for lang in ("en", "ru"):
+                with self.subTest(event=event, lang=lang):
+                    text = context(event, source, lang)["additionalContext"]
+                    for skill in ("test-first", "debug-root-cause", "start-branch", "finish-branch"):
+                        self.assertIn(skill, text)
+
+
 class TestSubagent(unittest.TestCase):
     def test_subagent_gets_its_own_rule(self):
         block = context("SubagentStart")

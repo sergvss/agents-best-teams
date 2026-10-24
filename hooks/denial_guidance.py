@@ -53,10 +53,15 @@ def main():
     # Язык текста — как у остальных хуков: окружение, затем файл проекта.
     use_project(data.get("cwd") or os.getcwd())
 
+    # Плюс одна строка про процессные скиллы. На простых задачах модель их не
+    # открывала, даже когда описание совпадало дословно (живой прогон 1.35.0).
+    # Лёгкая замена того, что у obra/superpowers делает полный текст главного
+    # скилла в каждой сессии и правило «вызывай при 1% шанса».
+    text = msg(GUIDANCE[event]) + "\n\n" + msg("process.skills")
     sys.stdout.write(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": event,
-            "additionalContext": msg(GUIDANCE[event]),
+            "additionalContext": text,
         }
     }, ensure_ascii=True))
     return 0
