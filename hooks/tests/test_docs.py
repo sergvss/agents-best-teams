@@ -57,6 +57,16 @@ def anchor(title):
     return slug.replace(" ", "-")
 
 
+class TestPlanFormatCopies(unittest.TestCase):
+    def test_tier3_plan_format_is_the_same_in_both_places(self):
+        # Формат плана Tier 3 живёт в двух местах намеренно: роль оркестратора копируется
+        # в проект и файлов плагина не видит. Тест не даёт копиям разойтись
+        pattern = re.compile(r"```markdown\n## План: <название>.*?```", re.S)
+        blocks = [pattern.search(read(os.path.join(REPO, rel))).group(0)
+                  for rel in ("checklists/planning-checklist.md", "templates/pm-orchestrator.md")]
+        self.assertEqual(blocks[0], blocks[1])
+
+
 class TestSkillSize(unittest.TestCase):
     """
     После сжатия контекста Claude Code заново вкладывает скилл, обрезая его

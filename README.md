@@ -200,9 +200,10 @@ templates/     20 role templates
                other:       orchestrator, browser tester,
                             external LLM reviewer
 
-checklists/    8 checklists: tools, permissions, context,
+checklists/    9 checklists: tools, permissions, context,
                planning, the path from task to commit, branches,
-               test first, debugging from the root cause
+               test first, debugging from the root cause,
+               clarifying a task without an interview
 
 hooks/         Working protective hooks — the Claude Code layer
                guard.py — blocks destruction before it runs
@@ -256,7 +257,7 @@ Worth being precise about, because "the docs are in Russian" and "you cannot use
 
 **In English:** this README, [the concepts page](docs/concepts.en.md), the plugin's metadata, and **everything the hooks say to you** — every block reason and every suggested alternative.
 
-**In Russian:** the 11 principles, the 20 role templates, the 8 checklists, the bodies of the skills, the rest of `docs/`, and the Russian README at [README.ru.md](README.ru.md).
+**In Russian:** the 11 principles, the 20 role templates, the 9 checklists, the bodies of the skills, the rest of `docs/`, and the Russian README at [README.ru.md](README.ru.md).
 
 **Choosing the language.** Hook messages exist in both, and the rules are identical either way — language changes what you read, never what is blocked:
 

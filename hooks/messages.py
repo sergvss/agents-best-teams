@@ -163,11 +163,13 @@ MESSAGES = {
 
     # -- процессные скиллы: строка в постоянном контексте (denial_guidance.py) -
     "process.skills": {
-        "ru": "Процесс разработки agents-best-teams - открывай скилл до первой правки кода: баг или "
+        "ru": "Процесс разработки agents-best-teams - открывай скилл до первой правки кода: просьба "
+              "оставляет открытым, что именно строить - clarify-task; баг или "
               "новая логика - test-first; падающий тест или сбой, причина которого неясна - debug-root-cause; задача больше "
               "однострочной правки на основной ветке - start-branch; работа в ветке готова - "
               "finish-branch. Вопрос без правок кода скилла не требует.",
-        "en": "agents-best-teams development process - open the skill before the first code edit: a bug "
+        "en": "agents-best-teams development process - open the skill before the first code edit: a request "
+              "that leaves open what exactly to build - clarify-task; a bug "
               "or new logic - test-first; a failing test or a failure whose cause is unclear - debug-root-cause; a task "
               "bigger than a one-line edit on the default branch - start-branch; work on a branch is done "
               "- finish-branch. A question with no code edits needs no skill.",

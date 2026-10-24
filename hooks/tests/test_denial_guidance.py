@@ -86,7 +86,7 @@ class TestProcessSkills(unittest.TestCase):
             for lang in ("en", "ru"):
                 with self.subTest(event=event, lang=lang):
                     text = context(event, source, lang)["additionalContext"]
-                    for skill in ("test-first", "debug-root-cause", "start-branch", "finish-branch"):
+                    for skill in ("clarify-task", "test-first", "debug-root-cause", "start-branch", "finish-branch"):
                         self.assertIn(skill, text)
 
 
