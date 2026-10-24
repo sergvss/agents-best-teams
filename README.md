@@ -91,7 +91,7 @@ Not everything starts working the moment you install. The precise picture:
 
 **Activation comes first.** After installing, Claude Code prints either `Plugin is now active.` or `Run /reload-plugins to activate.` In the second case nothing works until you run that command.
 
-**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are eighteen of them per configuration file, and fixing one block leaves the log, the retry counter, the review gate and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
+**On macOS and Linux the hooks will most likely stay silent.** The configuration names `python`, while those systems name the binary `python3` — the hook never starts, and nothing tells you. Every occurrence needs changing, not just the first: there are nineteen of them per configuration file, and fixing one block leaves the log, the retry counter, the review gate and the startup prompt silent. The command to do it is in [hooks/README.md](hooks/README.md).
 
 ### The roles need a separate step
 
@@ -200,14 +200,15 @@ templates/     20 role templates
                other:       orchestrator, browser tester,
                             external LLM reviewer
 
-checklists/    5 checklists: tools, permissions, context,
-               planning, the path from task to commit
+checklists/    6 checklists: tools, permissions, context,
+               planning, the path from task to commit, branches
 
 hooks/         Working protective hooks — the Claude Code layer
                guard.py — blocks destruction before it runs
                verify.py — do not finish with failing tests
                approval_log.py — privileged-action log
                ledger_log.py — role calls into the task ledger
+               branch_hint.py — tells the agent it is editing the default branch
                retry_guard.py — the three-attempts rule
                review_gate.py — review gate for code commits (opt-in)
                session_start.py — start-of-session prompts
@@ -254,7 +255,7 @@ Worth being precise about, because "the docs are in Russian" and "you cannot use
 
 **In English:** this README, [the concepts page](docs/concepts.en.md), the plugin's metadata, and **everything the hooks say to you** — every block reason and every suggested alternative.
 
-**In Russian:** the 11 principles, the 20 role templates, the 5 checklists, the bodies of the skills, the rest of `docs/`, and the Russian README at [README.ru.md](README.ru.md).
+**In Russian:** the 11 principles, the 20 role templates, the 6 checklists, the bodies of the skills, the rest of `docs/`, and the Russian README at [README.ru.md](README.ru.md).
 
 **Choosing the language.** Hook messages exist in both, and the rules are identical either way — language changes what you read, never what is blocked:
 

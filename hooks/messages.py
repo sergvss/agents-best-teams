@@ -161,6 +161,35 @@ MESSAGES = {
               "proceed. If the user approved, carry on.",
     },
 
+    # -- подсказка про основную ветку: branch_hint.py -------------------------
+    "branch.hint_auto": {
+        "ru": "Ты правишь файлы на основной ветке {branch}, а политика проекта - работать в ветках "
+              "(git config abt.branches auto). Если задача больше однострочной правки, сейчас же заведи "
+              "ветку: git switch -c <тип>/<короткое-имя> (скилл start-branch). Незакоммиченные правки, "
+              "включая только что сделанную, переедут в неё, а {branch} останется чистой. Однострочную "
+              "правку можно оставить здесь.",
+        "en": "You are editing files on the default branch {branch}, and the project policy is to work "
+              "in branches (git config abt.branches auto). If the task is bigger than a one-line edit, "
+              "create a branch now: git switch -c <type>/<short-name> (the start-branch skill). "
+              "Uncommitted changes, including the one you just made, move with you and {branch} stays "
+              "clean. A one-line edit may stay here.",
+    },
+    "branch.hint_ask": {
+        "ru": "Ты правишь файлы на основной ветке {branch}, а политика веток в проекте не задана. Если "
+              "задача больше однострочной правки, сейчас же заведи ветку: git switch -c <тип>/<короткое-имя> "
+              "(скилл start-branch) - это обратимо, и {branch} останется чистой, правки переедут с тобой. И "
+              "одним вопросом спроси пользователя, работать ли так дальше; ответ запиши в git config "
+              "abt.branches - auto или off. Ответит «нет» - git switch {branch}, правки вернутся. Ты "
+              "субагент - вопрос верни блоком НУЖНО РАЗРЕШЕНИЕ, а ветку заведи.",
+        "en": "You are editing files on the default branch {branch}, and the project has no branch "
+              "policy yet. If the task is bigger than a one-line edit, create a branch now: git switch -c "
+              "<type>/<short-name> (the start-branch skill) - it is reversible, {branch} stays clean and "
+              "your changes move with you. Then ask the user one question - keep working this way or not - "
+              "and record the answer in git config abt.branches as auto or off. If they say no, git switch "
+              "{branch} brings the changes back. If you are a subagent, return the question as a PERMISSION "
+              "NEEDED block, but create the branch.",
+    },
+
     # -- журнал вызовов в ledger: ledger_log.py ------------------------------
     "ledger.header": {
         "ru": "# Журнал вызовов ролей - пишет хук ledger_log.py, не править",
@@ -354,6 +383,39 @@ MESSAGES = {
     "git.syntax_force": {
         "ru": "git push --force",
         "en": "git push --force",
+    },
+    "git.branch_force_delete": {
+        "ru": "CONFIRM [W/Write]: git branch -D - удаление ветки вместе с неслитыми коммитами.\n\n"
+              "Чем опасно: коммиты, которых нет в других ветках, остаются только в reflog "
+              "и пропадут при его очистке.\n\n"
+              "Альтернативы:\n"
+              "  1. git branch -d - git удалит ветку, только если она слита\n"
+              "  2. Сначала слить или запушить ветку, потом удалять\n"
+              "  3. Если работа действительно не нужна - пусть пользователь это подтвердит",
+        "en": "CONFIRM [W/Write]: git branch -D - deleting a branch together with unmerged commits.\n\n"
+              "Why it is dangerous: commits that are in no other branch survive only in the reflog "
+              "and disappear when it is pruned.\n\n"
+              "Alternatives:\n"
+              "  1. git branch -d - git deletes the branch only if it is merged\n"
+              "  2. Merge or push the branch first, then delete it\n"
+              "  3. If the work really is not needed - let the user confirm it",
+    },
+    "git.worktree_force_remove": {
+        "ru": "CONFIRM [W/Write]: git worktree remove --force - удаление worktree вместе с "
+              "незакоммиченными правками.\n\n"
+              "Чем опасно: правки внутри worktree git нигде не сохраняет, вернуть их нельзя.\n\n"
+              "Альтернативы:\n"
+              "  1. git -C <worktree> status - посмотреть, что там осталось\n"
+              "  2. Закоммитить или перенести правки, потом git worktree remove без --force\n"
+              "  3. Если правки действительно не нужны - пусть пользователь это подтвердит",
+        "en": "CONFIRM [W/Write]: git worktree remove --force - removing a worktree together with "
+              "uncommitted changes.\n\n"
+              "Why it is dangerous: git keeps no copy of changes inside the worktree; they cannot "
+              "be recovered.\n\n"
+              "Alternatives:\n"
+              "  1. git -C <worktree> status - see what is left there\n"
+              "  2. Commit or move the changes, then git worktree remove without --force\n"
+              "  3. If the changes really are not needed - let the user confirm it",
     },
     "git.reset_hard": {
         "ru": "CONFIRM [W/Write]: git reset --hard - сброс рабочей копии без возможности отката.\n\n"

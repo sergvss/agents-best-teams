@@ -177,9 +177,29 @@ class TestGit(GuardTestCase):
             ("git clean -fdx", "git clean"),
             ("git clean -fd", "git clean"),
             ("git checkout -- .", "checkout"),
+            # Процесс веток (1.34.0): удаление только по явному слову пользователя
+            ("git branch -D feat/daily", "branch -D"),
+            ("git branch -Dr origin/feat", "branch -D"),
+            ("git branch --delete --force feat/daily", "branch -D"),
+            ("git branch -d -f feat/daily", "branch -D"),
+            ("git worktree remove --force .worktrees/feat", "worktree remove --force"),
+            ("git worktree remove -f .worktrees/feat", "worktree remove --force"),
+            # Сокращения длинных флагов git принимает (триангуляция 1.34.0)
+            ("git branch --del --forc feat/daily", "branch -D"),
+            ("git branch --dele -f feat/daily", "branch -D"),
+            ("git worktree remove --f .worktrees/feat", "worktree remove --force"),
+            ("git worktree remove --forc .worktrees/feat", "worktree remove --force"),
         ]:
             with self.subTest(command=command):
                 self.assertConfirmed(bash(command), marker)
+
+    def test_safe_branch_cleanup_is_silent(self):
+        # Обычные -d и remove git сам не выполнит, если что-то потеряется
+        for command in ["git branch -d feat/daily", "git branch --delete feat/daily",
+                        "git worktree remove .worktrees/feat", "git worktree prune",
+                        "git switch -c feat/daily", "git merge feat/daily", "git branch -a"]:
+            with self.subTest(command=command):
+                self.assertEqual(decide(bash(command))[0], None)
 
     def test_force_by_alternative_syntax_asks_too(self):
         # Плюс перед рефспеком — тот же force, только другим синтаксисом,

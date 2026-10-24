@@ -955,6 +955,11 @@ def check_fs(tokens):
 # ---------------------------------------------------------------------------
 # Правило git — деструктивные операции с историей и рабочей копией
 # ---------------------------------------------------------------------------
+def is_abbrev(arg, option, shortest):
+    """Флаг - сокращение длинной опции не короче однозначного: --forc для --force."""
+    return len(arg) >= shortest and option.startswith(arg)
+
+
 def check_git(tokens):
     if not tokens or basename(tokens[0]) != "git":
         return
@@ -988,6 +993,25 @@ def check_git(tokens):
 
     if subcommand == "reset" and "--hard" in args:
         confirm(msg("git.reset_hard"))
+
+    # Удаление ветки с неслитыми коммитами: -D, слипшиеся флаги с D или -d вместе с
+    # --force. Обычный -d git сам не выполнит, если коммиты не слиты, - его не трогаем.
+    if subcommand == "branch":
+        short = [a for a in args if a.startswith("-") and not a.startswith("--")]
+        # git принимает однозначные сокращения длинных флагов: --del, --forc
+        # (триангуляция 1.34.0). У branch --for неоднозначно с --format, git его отвергнет
+        deleting = any("d" in a.lower() for a in short) or any(is_abbrev(a, "--delete", 5) for a in args)
+        forced = any("D" in a or "f" in a for a in short) or any(is_abbrev(a, "--force", 6) for a in args)
+        if deleting and forced:
+            confirm(msg("git.branch_force_delete"))
+
+    # worktree remove --force удаляет и незакоммиченные правки внутри worktree;
+    # без --force git откажет сам, если там есть что терять
+    if subcommand == "worktree" and args[:1] == ["remove"]:
+        # У worktree remove других флагов на --f нет: однозначно уже --f
+        if any(is_abbrev(a, "--force", 3) or (a.startswith("-") and not a.startswith("--") and "f" in a)
+               for a in args[1:]):
+            confirm(msg("git.worktree_force_remove"))
 
     if subcommand == "clean":
         # -n и --dry-run ничего не удаляют, а показывают список — это безопасно
