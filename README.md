@@ -22,6 +22,7 @@
 
 <p align="center">
   <a href="#why">Why</a> ·
+  <a href="#the-development-process">Process</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#install">Install</a> ·
   <a href="#updating">Updating</a> ·
@@ -33,7 +34,7 @@
 
 ---
 
-A methodology for building a **team of AI agents** for software development. For people using Claude Code, Codex, Cursor or any other agent CLI who want to move from "one super-agent for everything" to a specialised team with explicit roles, routing, and protection against regressions.
+A methodology and a Claude Code plugin for building software with a **team of AI agents**. Three layers in one plugin: a **development process** from request to merged branch — clarify the task, plan, branch, test first, debug from the root cause, review; **protective hooks** that stop destruction mechanically instead of asking nicely; and a **team of roles** with explicit areas and routing. For people using Claude Code, Codex, Cursor or any other agent CLI who want to move from "one super-agent for everything" to a team that works through a process.
 
 > **Read this before you install.** This README, the [concepts page](docs/concepts.en.md) and everything the hooks say to you are in English. The methodology's prose — the principles, the role templates, the checklists — is written in Russian, deliberately rather than by oversight. [The language situation](#the-language-situation) explains what that does and does not cost you.
 
@@ -48,6 +49,31 @@ A methodology for building a **team of AI agents** for software development. For
 | An agent destroyed something and it must not happen again | `hooks/` — working protective hooks, installed with the plugin |
 | Critical changes ship on gut feeling | `principles/05` — three models from different vendors, 2-of-3 rule |
 | You need an audit of what is already configured | `checklists/` — permission, context and planning matrices |
+| You want the agent to work through a process instead of improvising | the process skills — `clarify-task`, `start-branch`, `test-first`, `debug-root-cause`, `finish-branch` |
+
+## The development process
+
+The plugin covers the whole path from a request to a merged branch. Each step is a skill, opened before the first code edit; one line in the session context names them, because on simple tasks the model skips skills it is not reminded of.
+
+```
+request ──► clarify-task: look at the project first, then one message —
+            what I understood, 2-3 approaches with a recommendation,
+            at most three questions that change the result
+        ──► Tier
+   Tier 1 ─► edit on the current branch
+   Tier 2 ─► start-branch ─► test-first ─► review if risky ─► finish-branch
+   Tier 3 ─► plan: files, interfaces, Run/Expected, Review Focus
+           ─► a fresh reader checks the plan ─► you approve it
+           ─► start-branch ─► tasks one by one, risky ones reviewed at once
+           ─► final review of the branch ─► finish-branch
+bug ─────► debug-root-cause ─► test-first
+```
+
+- **Branches.** Tier 2 and above leaves the default branch; the project policy lives in `git config abt.branches`. At the end, a menu — merge, pull request or keep — and you choose. Deleting unmerged work takes your own word: the hook asks before `git branch -D`.
+- **Test first.** A red test before the code, and it must fail for the right reason. Code written before the test is not deleted: the test has to go red when the behaviour is broken on purpose.
+- **Plan execution, Tier 3.** Each role gets its own task, not the whole plan. After the plan is approved the orchestrator settles small questions itself and writes each decision down; it stops only for something irreversible, security, anything outside the branch, or a broken plan.
+
+Measured, not assumed: a red test before the code — 0 of 2 runs without the skills, 3 of 3 with them; a vague request handled in one round — 0 of 3 before, 2 of 3 after; a Tier 3 task went from plan to merged branch, surviving a broken session on the way. Idea sources and differences — [docs/superpowers-comparison.md](docs/superpowers-comparison.md).
 
 ---
 
@@ -82,6 +108,7 @@ Not everything starts working the moment you install. The precise picture:
 |---|---|---|
 | **Protective hooks** | immediately | Block filesystem destruction, writes to `.env` and SQL without `WHERE` in database clients (`psql`, `mysql`, `sqlite3` and others); before force-push, `reset --hard` or `DROP` they ask you in the Claude Code permission prompt, and so does a code commit that `code-reviewer` has not approved (once the team has `code-reviewer` and you turn the gate on with an empty `.claude/.review-gate`); log privileged actions and stop blind retries of a failing command |
 | **After-denial rule** | next start | When auto mode denies an action, the agent asks you through the question menu instead of telling you to run it yourself. A role hands the request to the main conversation: subagents cannot ask |
+| **Development process** | immediately | The skills `clarify-task`, `start-branch`, `test-first`, `debug-root-cause`, `finish-branch`; one line in the session context names them; a hook tells the agent when it is editing the default branch |
 | **Checklists as skills** | immediately | Claude pulls them in when relevant, or invoke them with `/` |
 | **Hook diagnosis** | immediately | Ask where a permission prompt or a block came from: the `diagnose-hooks` skill reads the session transcript, cites `file:line` for every hook decision and says whether the current version would still do it |
 | **Team setup prompt** | next start | It is a `SessionStart` hook: the event already fired if you installed mid-session. `/clear` is enough — no need to restart entirely — but `/reload-plugins` will not do it |
@@ -218,7 +245,8 @@ hooks/         Working protective hooks — the Claude Code layer
                messages.py — every message, in English and Russian
                configuration and tests
 
-skills/        Checklists as invocable skills + team assembly for a project
+skills/        The development process, checklists as invocable skills,
+               team assembly for a project
 
 docs/          Install, update, model configuration, first run,
                choosing an execution mechanism, verification,
@@ -289,7 +317,7 @@ This methodology grew out of building agent teams in real product projects. The 
 Practices from two more sources are absorbed and integrated:
 
 - **[garrytan/gstack](https://github.com/garrytan/gstack)** — Garry Tan's (Y Combinator) kit for Claude Code as a virtual engineering team. The structured Think → Plan → Build → Review → Test → Ship → Reflect sprint, and the idea of parallel independent pipelines, underpin our `pm-orchestrator` and Tier decomposition.
-- **[obra/superpowers](https://github.com/obra/superpowers)** — Jesse Vincent's skills framework and development methodology for coding agents. Its habit of testing agent behaviour, not just code, with headless `claude -p` runs shaped our live checks and the corpus of real agent commands the hooks are tested against; its two-stage review (spec first, quality second), the discipline of verifying review feedback before acting on it, session diagnosis from transcripts with file:line evidence, and the task ledger that lets a long task survive a broken session are now part of this methodology too. Thank you for showing how far a methodology can be pushed when its rules are tested like code. The two plugins work side by side: in a checked run, superpowers' TDD skill drove the work and our review gate stopped the unreviewed commit; the agent then called `code-reviewer` on its own, and the approved commit went through.
+- **[obra/superpowers](https://github.com/obra/superpowers)** — Jesse Vincent's skills framework and development methodology for coding agents. Its habit of testing agent behaviour, not just code, with headless `claude -p` runs shaped our live checks and the corpus of real agent commands the hooks are tested against; its two-stage review (spec first, quality second), the discipline of verifying review feedback before acting on it, session diagnosis from transcripts with file:line evidence, and the task ledger that lets a long task survive a broken session are now part of this methodology too — and so is most of its development process: branches with an integration menu, test first, debugging from the root cause, clarifying a task before building, a plan format with interfaces and Review Focus, and plan execution task by task. Every piece is rewritten for our confirmation rules and measured before and after; the differences — no long interviews, nothing deleted without your word, review only where a mistake is expensive — are in [docs/superpowers-comparison.md](docs/superpowers-comparison.md). Thank you for showing how far a methodology can be pushed when its rules are tested like code.
 - **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — a collection of disciplinary skills based on Andrej Karpathy's observations about typical LLM coding failures. The **Think Before Coding**, **Simplicity First**, **Surgical Changes** and **Goal-Driven Execution** principles are built into the methodology directly.
 
 ---

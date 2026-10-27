@@ -38,6 +38,20 @@ Authority: `principles/02-tier-decomposition.md`.
 
 ---
 
+## The development process
+
+The tier decides how much process a task gets; the process itself is a chain of skills, each opened before the first code edit.
+
+- **Clarify without an interview.** Look at the project before asking. Then one message: what was understood, two or three approaches with a recommendation when there is a real fork, at most three questions that change the result. A complete request is just done.
+- **Branches.** Tier 2 and above leaves the default branch. The finish is a menu — merge, pull request, keep — and the human chooses. Unmerged work is deleted only on the human's own word.
+- **Test first.** A test that goes red, for the right reason, before the code; the whole suite green after. Code written before its test is kept, and the test proves itself by going red when the behaviour is broken on purpose.
+- **Debugging from the root cause.** Reproduce, trace the data back to where it went wrong, one hypothesis at a time; three failed hypotheses mean stop and talk.
+- **Tier 3 plans** carry a file map, task interfaces, `Run`/`Expected` for every step and a Review Focus — inputs the spec implies but no step tests. A fresh reader checks the plan before the human sees it. Execution goes task by task; risky tasks are reviewed at once, the rest by a final review of the branch.
+
+Authority: `checklists/clarify-task.md`, `branch-workflow.md`, `test-first.md`, `debugging.md`, `planning-checklist.md`.
+
+---
+
 ## Risk classes: R / D / W / P
 
 Every action falls into one of four classes, and the class decides whether a human is asked.
