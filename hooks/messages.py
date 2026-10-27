@@ -167,12 +167,16 @@ MESSAGES = {
               "оставляет открытым, что именно строить - clarify-task; баг или "
               "новая логика - test-first; падающий тест или сбой, причина которого неясна - debug-root-cause; задача больше "
               "правки в пару строк на основной ветке - start-branch; работа в ветке готова - "
-              "finish-branch. Вопрос без правок кода скилла не требует.",
+              "finish-branch. Вопрос без правок кода скилла не требует. Срочность и «без формальностей» "
+              "процесс не отменяют: красный тест - минута, а не формальность. Пропустить его можно "
+              "только по явной просьбе пользователя «без тестов».",
         "en": "agents-best-teams development process - open the skill before the first code edit: a request "
               "that leaves open what exactly to build - clarify-task; a bug "
               "or new logic - test-first; a failing test or a failure whose cause is unclear - debug-root-cause; a task "
               "bigger than a couple-of-lines edit on the default branch - start-branch; work on a branch is done "
-              "- finish-branch. A question with no code edits needs no skill.",
+              "- finish-branch. A question with no code edits needs no skill. Urgency and \"no formalities\" "
+              "do not cancel the process: a red test takes a minute, it is not a formality. Skip it "
+              "only when the user explicitly says \"no tests\".",
     },
 
     # -- подсказка про основную ветку: branch_hint.py -------------------------
