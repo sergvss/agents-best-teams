@@ -174,7 +174,11 @@ def main():
     if blocks > args.max_blocks:
         # Бесконечно блокировать нельзя: агент может быть не в состоянии починить,
         # и сессия окажется заперта. Но уйти молча тоже нельзя.
-        sys.stderr.write(msg("verify.giving_up", blocks=blocks - 1, tail=tail))
+        # stderr с кодом 0 на Stop никто не видит (аудит 1.38.1): сообщение идёт в
+        # systemMessage - его Claude Code показывает пользователю. stderr - для журнала.
+        text = msg("verify.giving_up", blocks=blocks - 1, tail=tail)
+        sys.stdout.write(json.dumps({"systemMessage": text}, ensure_ascii=True))
+        sys.stderr.write(text)
         return 0
 
     sys.stderr.write(msg("verify.not_done", command=command, tail=tail))

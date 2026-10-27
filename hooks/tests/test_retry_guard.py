@@ -138,6 +138,16 @@ class TestNormalWorkIsNotBlocked(RetryGuardTestCase):
                 "правка отслеживаемого файла не засчиталась на шаге {}".format(i),
             )
 
+    def test_editing_a_file_in_a_new_untracked_folder_counts(self):
+        # Аудит 1.38.1: porcelain без -uall показывал «?? newdir/», и правка файла
+        # внутри нового каталога не меняла отпечаток - четвёртый вызов блокировался
+        os.makedirs(os.path.join(self.cwd, "newdir"))
+        cmd = "pytest -q"
+        for i in range(5):
+            self.call(cmd, record=True)
+            self.touch("newdir/a.py", "версия {}".format(i))
+            self.assertIsNone(self.call(cmd), "правка в новом каталоге не засчиталась на шаге {}".format(i))
+
     def test_below_limit_passes(self):
         cmd = "pytest -q"
         for _ in range(2):

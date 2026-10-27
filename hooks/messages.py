@@ -166,37 +166,37 @@ MESSAGES = {
         "ru": "Процесс разработки agents-best-teams - открывай скилл до первой правки кода: просьба "
               "оставляет открытым, что именно строить - clarify-task; баг или "
               "новая логика - test-first; падающий тест или сбой, причина которого неясна - debug-root-cause; задача больше "
-              "однострочной правки на основной ветке - start-branch; работа в ветке готова - "
+              "правки в пару строк на основной ветке - start-branch; работа в ветке готова - "
               "finish-branch. Вопрос без правок кода скилла не требует.",
         "en": "agents-best-teams development process - open the skill before the first code edit: a request "
               "that leaves open what exactly to build - clarify-task; a bug "
               "or new logic - test-first; a failing test or a failure whose cause is unclear - debug-root-cause; a task "
-              "bigger than a one-line edit on the default branch - start-branch; work on a branch is done "
+              "bigger than a couple-of-lines edit on the default branch - start-branch; work on a branch is done "
               "- finish-branch. A question with no code edits needs no skill.",
     },
 
     # -- подсказка про основную ветку: branch_hint.py -------------------------
     "branch.hint_auto": {
         "ru": "Ты правишь файлы на основной ветке {branch}, а политика проекта - работать в ветках "
-              "(git config abt.branches auto). Если задача больше однострочной правки, сейчас же заведи "
+              "(git config abt.branches auto). Если задача больше правки в пару строк, сейчас же заведи "
               "ветку: git switch -c <тип>/<короткое-имя> (скилл start-branch). Незакоммиченные правки, "
-              "включая только что сделанную, переедут в неё, а {branch} останется чистой. Однострочную "
-              "правку можно оставить здесь.",
+              "включая только что сделанную, переедут в неё, а {branch} останется чистой. Правку в пару "
+              "строк можно оставить здесь.",
         "en": "You are editing files on the default branch {branch}, and the project policy is to work "
-              "in branches (git config abt.branches auto). If the task is bigger than a one-line edit, "
+              "in branches (git config abt.branches auto). If the task is bigger than a couple-of-lines edit, "
               "create a branch now: git switch -c <type>/<short-name> (the start-branch skill). "
               "Uncommitted changes, including the one you just made, move with you and {branch} stays "
-              "clean. A one-line edit may stay here.",
+              "clean. A couple-of-lines edit may stay here.",
     },
     "branch.hint_ask": {
         "ru": "Ты правишь файлы на основной ветке {branch}, а политика веток в проекте не задана. Если "
-              "задача больше однострочной правки, сейчас же заведи ветку: git switch -c <тип>/<короткое-имя> "
+              "задача больше правки в пару строк, сейчас же заведи ветку: git switch -c <тип>/<короткое-имя> "
               "(скилл start-branch) - это обратимо, и {branch} останется чистой, правки переедут с тобой. И "
               "одним вопросом спроси пользователя, работать ли так дальше; ответ запиши в git config "
               "abt.branches - auto или off. Ответит «нет» - git switch {branch}, правки вернутся. Ты "
               "субагент - вопрос верни блоком НУЖНО РАЗРЕШЕНИЕ, а ветку заведи.",
         "en": "You are editing files on the default branch {branch}, and the project has no branch "
-              "policy yet. If the task is bigger than a one-line edit, create a branch now: git switch -c "
+              "policy yet. If the task is bigger than a couple-of-lines edit, create a branch now: git switch -c "
               "<type>/<short-name> (the start-branch skill) - it is reversible, {branch} stays clean and "
               "your changes move with you. Then ask the user one question - keep working this way or not - "
               "and record the answer in git config abt.branches as auto or off. If they say no, git switch "

@@ -46,6 +46,7 @@ def run_verify(session, command=None, cwd=REPO, extra=None, home=None, project_d
         argv, input=json.dumps(payload).encode("utf-8"),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
     )
+    run_verify.last_stdout = proc.stdout.decode("utf-8", "replace")
     return proc.returncode, proc.stderr.decode("utf-8", "replace")
 
 
@@ -186,6 +187,9 @@ class TestVerifyGate(unittest.TestCase):
         code, err = run_verify(session, FAILING, extra=["--max-blocks", "2"])
         self.assertEqual(code, 0)
         self.assertIn("NOT finished", err)
+        # Аудит 1.38.1: stderr с кодом 0 на Stop никто не видит - сообщение обязано
+        # дойти до пользователя через systemMessage
+        self.assertIn("NOT finished", json.loads(run_verify.last_stdout)["systemMessage"])
 
     def test_success_resets_the_counter(self):
         session = self.session("reset")

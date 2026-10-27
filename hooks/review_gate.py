@@ -317,6 +317,25 @@ def switch_exists(target, cwd):
     return os.path.exists(path)
 
 
+def removed_sources(tokens):
+    """Пути, которые команда убирает с места: источники mv, пути git rm и git mv."""
+    if not tokens:
+        return []
+    name = basename(tokens[0])
+    args = [a for a in tokens[1:] if not a.startswith("-")]
+    if name == "mv":
+        return args[:-1]
+    if name == "git":
+        rest = tokens[1:]
+        idx = 0
+        while idx < len(rest) and rest[idx].startswith("-"):
+            idx += 2 if rest[idx] in GIT_GLOBAL_WITH_VALUE else 1
+        if idx < len(rest) and rest[idx] in ("rm", "mv"):
+            paths = [a for a in rest[idx + 1:] if not a.startswith("-")]
+            return paths if rest[idx] == "rm" else paths[:-1]
+    return []
+
+
 def is_approvals_file(path):
     return path_basename(path.strip("\"'")) == APPROVALS_FILE
 
@@ -670,6 +689,13 @@ def pre_bash(data):
         if is_marker(tokens) and agent != REVIEWER:
             deny(msg("review.approve_not_reviewer", who=agent or msg("review.who_main")))
         writes = written_paths(tokens)
+        # Источники, которые команда убирает: mv переносит их, git rm и git mv - тоже.
+        # written_paths берёт у mv только цель, и `mv .claude/.review-gate /tmp/x`
+        # выключал шлюз без окна (аудит 1.38.1)
+        for source in removed_sources(tokens):
+            if is_switch(source, workdir) and switch_exists(source, cwd):
+                note_platform_write(source, workdir)
+                confirm(msg("review.switch_write", path=source))
         for target in writes:
             if is_approvals_file(target):
                 deny(msg("review.approvals_protected", path=target))

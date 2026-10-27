@@ -563,7 +563,10 @@ class TestAgentMemory(GuardTestCase):
                         "echo x >> CHANGELOG.md"):
             with self.subTest(command=command, expect="как Edit"):
                 self.assertAllowed(bash(command, "devops"))
-        for command in ("echo x > CHANGELOG.md", "tee CHANGELOG.md"):
+        for command in ("echo x > CHANGELOG.md", "tee CHANGELOG.md",
+                        # Аудит 1.38.1: > в сегменте с sed -i или tee -a - создание файла
+                        "sed -i s/x/y/ CHANGELOG.md > src/new.py",
+                        "tee -a CHANGELOG.md > src/new.py"):
             with self.subTest(command=command, expect="как Write"):
                 self.assertBlocked(bash(command, "devops"), "devops")
         # Роли с полным запретом записи правка существующего не открывается.

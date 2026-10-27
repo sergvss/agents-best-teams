@@ -112,6 +112,10 @@ class GateTestCase(unittest.TestCase):
             return None, None
         return block["permissionDecision"], block["permissionDecisionReason"]
 
+    def run_gate_decision(self, command, mode):
+        block = self.run_gate({"tool_name": "Bash", "permission_mode": mode, "tool_input": {"command": command}})
+        return (block["permissionDecision"], block["permissionDecisionReason"]) if block else (None, None)
+
     def approve(self, agent="code-reviewer", note="checked"):
         payload = {"tool_name": "Bash", "agent_type": agent,
                    "tool_input": {"command": 'echo abt-review-approve "{}"'.format(note)}}
@@ -337,7 +341,12 @@ class CommitGate(GateTestCase):
         self.assertEqual(self.decide("git add pkg && git commit -m x")[0], "ask")
 
     def test_switch_name_elsewhere_does_not_ask(self):
-        self.assertEqual(self.decide("touch src/.review-gate"), (None, None))
+        # Аудит 1.38.1: без файла тест проходил потому, что файла нет, а не потому,
+        # что путь не тот. Файл есть - окна нет только из-за проверки пути.
+        self.write("src/.review-gate", "")
+        for command in ("touch src/.review-gate", "rm src/.review-gate", "mv src/.review-gate src/x"):
+            with self.subTest(command=command):
+                self.assertEqual(self.decide(command), (None, None))
 
     def test_version_only_commit_is_silent(self):
         # Окно пользователя: коммит одного VERSION шлюз считал кодом.
@@ -382,9 +391,12 @@ class CommitGate(GateTestCase):
 
     def test_removing_or_rewriting_the_switch_needs_a_human(self):
         # Удалить включатель - выключить шлюз: без человека агент этого не делает.
-        # Триангуляция 1.27.0: существование проверяется в каталоге после cd
+        # Триангуляция 1.27.0: существование проверяется в каталоге после cd.
+        # Аудит 1.38.1: mv и git rm/mv убирают включатель так же, как rm
         for command in ("rm .claude/.review-gate", "rm -f .claude/.review-gate && git commit -am x",
-                        "cd .claude && rm .review-gate", "cd .claude && echo off > .review-gate"):
+                        "cd .claude && rm .review-gate", "cd .claude && echo off > .review-gate",
+                        "mv .claude/.review-gate /tmp/x", "git rm .claude/.review-gate",
+                        "git rm --cached .claude/.review-gate", "git mv .claude/.review-gate .claude/off"):
             with self.subTest(command=command):
                 decision, text = self.decide(command)
                 self.assertEqual(decision, "ask")
@@ -394,6 +406,8 @@ class CommitGate(GateTestCase):
         self.assertEqual(block["permissionDecision"], "ask")
         # Аудит 1.33.0: в bypass окно на запись в .claude/ Claude Code одобряет сам -
         # перезапись включателя обязана получить отказ, как rm в том же режиме
+        decision, _ = self.run_gate_decision("mv .claude/.review-gate /tmp/x", "bypassPermissions")
+        self.assertEqual(decision, "deny", "в bypass окно на запись в .claude/ Claude Code одобряет сам")
         for tool in ("Write", "Edit"):
             with self.subTest(tool=tool):
                 block = self.run_gate({"tool_name": tool, "permission_mode": "bypassPermissions",

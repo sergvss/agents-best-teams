@@ -1,11 +1,11 @@
 ---
 name: start-branch
-description: Use when about to change code for a task larger than a one-line edit while on main, master or the default branch, or when two roles must change the same area in parallel - before the first edit.
+description: Use when about to change code beyond a couple-of-lines edit while on main, master or the default branch, or when two roles must change the same area in parallel - before the first edit.
 ---
 
 # Начало работы в ветке
 
-Задача Tier 2 и выше идёт в отдельной ветке: основная остаётся рабочей, откат — удаление ветки. Tier 1 — на текущей ветке.
+Любая правка кода крупнее пары строк — включая небольшую задачу Tier 1 — идёт в отдельной ветке: основная остаётся рабочей, откат — удаление ветки. Правка в пару строк — на текущей ветке. Порог ветки — не Tier: Tier решает, сколько процесса нужно, ветка — где работа живёт.
 
 1. **Текущая ветка** — `git branch --show-current`. Не основная (`main`, `master` или та, на которую указывает `origin/HEAD`) — работай здесь.
 2. **На основной — политика проекта:** `git config --get abt.branches`.

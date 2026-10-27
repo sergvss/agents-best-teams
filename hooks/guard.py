@@ -857,6 +857,13 @@ def modifies_existing(tokens, target):
         if token == ">>" and tokens[index + 1] == target:
             return True
 
+    # Цель перенаправления > - это создание или обнуление, даже если команда в
+    # сегменте - sed -i или tee -a: `sed -i ... CHANGELOG.md > src/new.py` создаёт
+    # src/new.py, и засчитывать его правкой существующего нельзя (аудит 1.38.1)
+    for index, token in enumerate(tokens[:-1]):
+        if token in (">", ">|", "&>") and tokens[index + 1] == target:
+            return False
+
     command = basename(tokens[0])
     if command == "sed":
         return any(a.startswith("-i") for a in tokens[1:])

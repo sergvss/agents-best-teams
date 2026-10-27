@@ -120,7 +120,7 @@ def workspace_fingerprint(cwd):
     # после любой следующей правки. Одного его недостаточно — агент, который
     # чинит тот же файл между попытками, выглядел бы повторяющим вслепую.
     # diff добавляет содержимое отслеживаемых правок.
-    for command in (["git", "status", "--porcelain"], ["git", "diff", "HEAD"]):
+    for command in (["git", "status", "--porcelain", "--untracked-files=all"], ["git", "diff", "HEAD"]):
         try:
             result = subprocess.run(
                 command, cwd=cwd,
@@ -134,6 +134,8 @@ def workspace_fingerprint(cwd):
             parts.append(result.stdout)
         elif command[1] == "status":
             return directory_fingerprint(cwd)   # каталог не под git
+    # porcelain выше идёт с -uall: без него новый каталог виден одной строкой
+    # «?? tests/», а stat каталога от правки файла внутри не меняется (аудит 1.38.1).
     # Неотслеживаемые файлы не попадают ни в porcelain по содержимому
     # (там только «?? path»), ни в diff — а правят их не реже прочих.
     # Читать их целиком незачем: размер и время правки меняются вместе с

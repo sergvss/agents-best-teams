@@ -26,7 +26,7 @@ const AREAS = [
   {
     key: 'hooks-readme',
     doc: 'hooks/README.md',
-    against: 'hooks/guard.py, hooks/verify.py, hooks/retry_guard.py, hooks/approval_log.py, hooks/ledger_log.py, hooks/review_gate.py, hooks/denial_guidance.py, hooks/session_start.py, hooks/messages.py',
+    against: 'hooks/guard.py, hooks/verify.py, hooks/retry_guard.py, hooks/approval_log.py, hooks/ledger_log.py, hooks/branch_hint.py, hooks/review_gate.py, hooks/denial_guidance.py, hooks/session_start.py, hooks/messages.py',
     focus: 'что именно блокируется, какие роли в матрице, формат записи журнала, порядок выбора языка, к каким событиям подключён каждый хук',
   },
   {
@@ -59,9 +59,15 @@ const AREAS = [
   },
   {
     key: 'orchestrator',
-    doc: 'templates/pm-orchestrator.md и templates/scope-challenger.md',
+    doc: 'templates/pm-orchestrator.md, templates/scope-challenger.md и templates/code-reviewer.md',
     against: 'hooks/guard.py (зона in_ledger), hooks/ledger_log.py, principles/02, principles/04, principles/07, checklists/implementation-path.md, checklists/planning-checklist.md',
-    focus: 'ledger и calls.md: где лежат, кто что пишет, когда удаляются; лимиты делегаций и раундов ревью; порядок старта Tier 3 и проверка плана глазами исполнителя - совпадают ли числа и шаги во всех местах',
+    focus: 'ledger и calls.md: где лежат, кто что пишет, когда удаляются; лимиты делегаций и раундов ревью; порядок старта Tier 3, проверка плана глазами исполнителя, исполнение плана (поручения по задачам, ревью рискованных задач и финальное, решения по ходу), ветки - совпадают ли числа и шаги во всех местах; нет ли в роли ссылок на файлы плагина, которых в проекте не будет',
+  },
+  {
+    key: 'process',
+    doc: 'checklists/branch-workflow.md, checklists/test-first.md, checklists/debugging.md, checklists/clarify-task.md и их скиллы в skills/',
+    against: 'hooks/branch_hint.py, hooks/guard.py (правило git: branch -D, worktree remove --force), hooks/denial_guidance.py и ключ process.skills в hooks/messages.py, checklists/implementation-path.md',
+    focus: 'совпадают ли обещания процесса с хуками: когда срабатывает подсказка о ветке, что делается при незаданной политике abt.branches, на что хук открывает окно; согласованы ли короткий скилл и полный чек-лист; все ли процессные скиллы названы в строке процесса',
   },
   {
     key: 'skills',
